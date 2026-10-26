@@ -59,7 +59,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 .brand h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em;margin:0}
 .brand .sub{font-size:12px;color:var(--muted)}
 .iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--sunk);border-radius:12px;padding:3px;gap:3px}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);background:var(--sunk);border-radius:12px;padding:3px;gap:3px}
 .tabs button{border:0;background:transparent;border-radius:9px;padding:8px 4px;font-size:13px;font-weight:600;color:var(--muted)}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 
@@ -174,6 +174,37 @@ textarea.inp{min-height:110px;resize:vertical}
 .help{font-size:13px;color:var(--muted);margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;font-size:14px;z-index:30;max-width:calc(100% - 32px);text-align:center}
 .status{font-size:11px;color:var(--muted)}
+.hbtns{display:flex;gap:8px;align-items:center}
+#settingsBtn{padding:8px 10px}
+.cur-sym{font-family:var(--f-display);font-size:20px;font-weight:700;width:28px;text-align:center}
+.copy{text-align:center;font-size:11px;color:var(--muted);padding:28px 0 0}
+.copy{text-align:center;font-size:11px;color:var(--muted);padding-top:28px}
+.tabs button{font-size:12.5px}
+.toggle{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 14px;font-weight:600;width:100%;text-align:left}
+.tg-dot{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;flex:none;transition:background .15s}
+.tg-dot::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
+.toggle[aria-pressed="true"] .tg-dot{background:var(--accent)}
+.toggle[aria-pressed="true"] .tg-dot::after{left:19px}
+.split{display:flex;flex-direction:column;gap:14px;margin-top:12px;padding:14px;border-radius:12px;background:var(--sunk)}
+.pchips{display:flex;flex-wrap:wrap;gap:8px}
+.pchip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px}
+.pchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;background:var(--surface);border-radius:10px;padding:3px;border:1px solid var(--line)}
+.seg button{border:0;background:transparent;border-radius:8px;padding:8px 4px;font-weight:600;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.parts{display:flex;flex-direction:column;gap:8px}
+.part{display:flex;justify-content:space-between;align-items:center;gap:10px;font-weight:600;min-height:38px}
+.pin{display:flex;align-items:center;gap:6px;width:130px}
+.pin .inp{padding:8px 10px;text-align:right}
+.splitsum{font-size:13px;font-weight:600}
+.splitsum.ok{color:var(--good)} .splitsum.warn{color:var(--bad)}
+.good{color:var(--good)} .bad{color:var(--bad)}
+.of{display:block;font-size:11px;color:var(--muted);font-weight:500;text-align:right}
+.big.good,.big.bad{color:inherit}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.arow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 0;border-top:1px solid var(--line)}
+.arow:first-child{border-top:0}
+.arow .t2{font-size:12px;color:var(--muted)}
 </style>
 
 </head>
@@ -185,19 +216,25 @@ textarea.inp{min-height:110px;resize:vertical}
         <h1>Daily Spend Log</h1>
         <div class="sub" id="status">Loading…</div>
       </div>
+      <div class="hbtns">
+      <button class="iconbtn" id="settingsBtn" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       <button class="iconbtn" id="exportBtn" aria-label="Download Excel report">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
         Excel
       </button>
+      </div>
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-view="recent" aria-selected="true">Recent</button>
       <button role="tab" data-view="week" aria-selected="false">Week</button>
       <button role="tab" data-view="month" aria-selected="false">Month</button>
+      <button role="tab" data-view="split" aria-selected="false">Split</button>
       <button role="tab" data-view="messages" aria-selected="false">Messages</button>
     </nav>
   </header>
   <main id="main"><div class="empty"><b>Loading your expenses…</b></div></main>
+  <footer class="copy">© 2026 Saberi · Daily Spend Log · All rights reserved</footer>
+  <footer class="copy">© 2026 Saberi · Daily Spend Log. All rights reserved.</footer>
 </div>
 
 <button class="fab" id="fab" aria-label="Add expense">
@@ -240,8 +277,12 @@ const labelOf = e => (e.cat==="utilities" && e.sub) ? e.sub : (CAT[e.cat]?.label
 // ---------- helpers ----------
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const money = n => "$" + (n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
-const moneyShort = n => n>=1000 ? "$"+(n/1000).toFixed(n>=10000?0:1)+"k" : "$"+Math.round(n);
+const CURRENCIES = {USD:{sym:"$",loc:"en-US",name:"US Dollar"}, INR:{sym:"₹",loc:"en-IN",name:"Indian Rupee"}, EUR:{sym:"€",loc:"en-IE",name:"Euro"}};
+let currency = "USD";
+try{ const c=localStorage.getItem("spendlog.currency"); if(CURRENCIES[c]) currency=c; }catch(_){}
+const sym = () => CURRENCIES[currency].sym;
+const money = n => sym() + (n||0).toLocaleString(CURRENCIES[currency].loc,{minimumFractionDigits:2,maximumFractionDigits:2});
+const moneyShort = n => n>=1000 ? sym()+(n/1000).toFixed(n>=10000?0:1)+"k" : sym()+Math.round(n);
 const pad = n => String(n).padStart(2,"0");
 const DAY = 86400000;
 const sod = d => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
@@ -254,26 +295,29 @@ const fmtDayLong = d => new Date(d).toLocaleDateString("en-US",{weekday:"short",
 const fmtMD = d => new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"});
 const toLocalInput = ts => { const d=new Date(ts); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"T"+pad(d.getHours())+":"+pad(d.getMinutes()); };
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const localDay = () => { const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); };
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
-const sum = arr => arr.reduce((a,e)=>a+(+e.amount||0),0);
+const share = e => (e && e.split && typeof e.split.my==="number") ? e.split.my : (+e.amount||0);
+const sum = arr => arr.reduce((a,e)=>a+share(e),0);
 const inRange = (from,to) => expenses.filter(e => e.ts>=+from && e.ts<+to);
 
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,2600); }
 
 // ---------- storage (on this device) ----------
-let expenses=[], messages=[], mode="loading", api=null;
+let expenses=[], messages=[], people=[], settlements=[], mode="loading", api=null;
 const LS_KEY="spendlog.v1";
-function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"{}"); return {e:j.e||[], m:j.m||[]}; }catch(_){ return {e:[],m:[]}; } }
-function lsSave(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({e:expenses,m:messages})); }catch(_){ toast("Couldn't save on this phone. Check that private browsing is off."); } }
+function lsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LS_KEY)||"{}"); return {e:j.e||[], m:j.m||[], p:j.p||[], s:j.s||[]}; }catch(_){ return {e:[],m:[],p:[],s:[]}; } }
+function lsSave(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({e:expenses,m:messages,p:people,s:settlements})); }catch(_){ toast("Couldn't save on this phone. Check that private browsing is off."); } }
 const byTsDesc = (a,b)=>b.ts-a.ts;
 function initStore(){
-  const l = lsLoad(); expenses=l.e.sort(byTsDesc); messages=l.m.sort(byTsDesc); mode="local";
+  const l = lsLoad(); expenses=l.e.sort(byTsDesc); messages=l.m.sort(byTsDesc); people=l.p; settlements=l.s; mode="local";
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(_){}
   api = {
     putExpense: o => { expenses=expenses.filter(x=>x.id!==o.id).concat([o]).sort(byTsDesc); lsSave(); render(); },
     delExpense: id => { expenses=expenses.filter(x=>x.id!==id); lsSave(); render(); },
     putMsg: o => { messages=messages.filter(x=>x.id!==o.id).concat([o]).sort(byTsDesc); lsSave(); render(); },
-    delMsg: id => { messages=messages.filter(x=>x.id!==id); lsSave(); render(); }
+    delMsg: id => { messages=messages.filter(x=>x.id!==id); lsSave(); render(); },
+    save: () => { lsSave(); render(); }
   };
   render();
 }
@@ -296,13 +340,13 @@ function chartHTML(days, gap){
     return '<div class="col" title="'+esc(d.title+": "+money(d.total))+'"><div class="fill" style="height:'+h+'%">'+segs+'</div></div>';
   }).join("");
   const xs = days.map(d=>'<span class="'+(d.today?"today":"")+'">'+esc(d.label)+'</span>').join("");
-  return '<div class="chart" style="--gap:'+gap+'px"><div class="yax num"><span>'+moneyShort(max)+'</span><span>'+moneyShort(max/2)+'</span><span>$0</span></div><div class="plot">'+cols+'</div><div class="xax num">'+xs+'</div></div>';
+  return '<div class="chart" style="--gap:'+gap+'px"><div class="yax num"><span>'+moneyShort(max)+'</span><span>'+moneyShort(max/2)+'</span><span>'+sym()+'0</span></div><div class="plot">'+cols+'</div><div class="xax num">'+xs+'</div></div>';
 }
 function dayBuckets(from, n, labelFn){
   const today=+sod(new Date()); const out=[];
   for(let i=0;i<n;i++){
     const d=addDays(from,i), e=addDays(from,i+1); const list=inRange(d,e); const segs={};
-    list.forEach(x=>{ segs[x.cat]=(segs[x.cat]||0)+(+x.amount||0); });
+    list.forEach(x=>{ segs[x.cat]=(segs[x.cat]||0)+share(x); });
     out.push({total:sum(list), segs, label:labelFn(d,i), title:fmtDayLong(d), today:+d===today});
   }
   return out;
@@ -318,7 +362,7 @@ function breakdownHTML(list){
     if(r.g.id==="food"){
       subs=CATS.filter(c=>c.group==="food").map(c=>{ const a=sum(r.gl.filter(e=>e.cat===c.id)); return a?'<span><i style="background:'+colorOf(c.id)+'"></i>'+c.label+' <b class="num">'+money(a)+'</b></span>':""; }).join("");
     } else if(r.g.id==="utilities"){
-      const m={}; r.gl.forEach(e=>{ const k=e.sub||"General"; m[k]=(m[k]||0)+(+e.amount||0); });
+      const m={}; r.gl.forEach(e=>{ const k=e.sub||"General"; m[k]=(m[k]||0)+share(e); });
       subs=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,a])=>'<span>'+esc(k)+' <b class="num">'+money(a)+'</b></span>').join("");
     }
     return '<div class="bd-row"><span class="sw" style="background:'+r.g.color+'"></span><span class="bd-name">'+r.g.label+'<span class="pct num">'+Math.round(r.a/t*100)+'%</span></span><span class="bd-amt num">'+money(r.a)+'</span><div class="bd-bar"><span style="width:'+(r.a/rows[0].a*100)+'%;background:'+r.g.color+'"></span></div>'+(subs?'<div class="bd-subs">'+subs+'</div>':"")+'</div>';
@@ -326,7 +370,7 @@ function breakdownHTML(list){
 }
 function itemHTML(e){
   const note = e.note ? esc(e.note) : (e.source==="message" ? "From message" : "");
-  return '<button class="item" data-edit="'+esc(e.id)+'"><span class="bar" style="background:'+colorOf(e.cat)+'"></span><span class="mid"><span class="t1">'+esc(labelOf(e))+(e.source==="message"?' <span class="tag">msg</span>':"")+'</span><span class="t2">'+fmtTime(e.ts)+(note?" · "+note:"")+'</span></span><span class="amt num">'+money(+e.amount)+'</span></button>';
+  return '<button class="item" data-edit="'+esc(e.id)+'"><span class="bar" style="background:'+colorOf(e.cat)+'"></span><span class="mid"><span class="t1">'+esc(labelOf(e))+(e.source==="message"?' <span class="tag">msg</span>':"")+(e.split?' <span class="tag">split</span>':"")+'</span><span class="t2">'+fmtTime(e.ts)+(note?" · "+note:"")+(e.split?" · "+esc(e.split.paidBy==="Me"?"you paid":e.split.paidBy+" paid"):"")+'</span></span><span class="amt num">'+money(share(e))+(e.split?'<span class="of">of '+money(+e.amount)+'</span>':"")+'</span></button>';
 }
 function entriesByDay(list){
   if(!list.length) return "";
@@ -391,7 +435,7 @@ function render(){
   $("#status").textContent = mode==="loading" ? "Loading…" : "Saved on this phone";
   const m=$("#main");
   if(mode==="loading"){ m.innerHTML='<div class="empty"><b>Loading your expenses…</b></div>'; return; }
-  m.innerHTML = view==="week"?viewWeek(): view==="month"?viewMonth(): view==="messages"?viewMessages(): viewRecent();
+  m.innerHTML = view==="week"?viewWeek(): view==="month"?viewMonth(): view==="messages"?viewMessages(): view==="split"?viewSplit(): viewRecent();
   $("#fab").hidden = view==="messages";
 }
 
@@ -399,6 +443,8 @@ $("#main").addEventListener("click", ev=>{
   const t=ev.target.closest("button"); if(!t) return;
   if(t.dataset.edit){ const e=expenses.find(x=>x.id===t.dataset.edit); if(e) openEntry({...e}); }
   else if(t.dataset.nav){ const n=+t.dataset.nav; if(view==="week") weekAnchor=addDays(weekAnchor,7*n); else monthAnchor=addMonths(monthAnchor,n); render(); }
+  else if(t.dataset.friend){ openFriend(t.dataset.friend); }
+  else if(t.id==="addPersonMain"){ const n=addPerson($("#newPersonMain").value); if(n){ toast("Added "+n); } }
   else if(t.id==="msgCheck"){ checkMessage($("#msgIn").value); }
   else if(t.dataset.delmsg){ api.delMsg(t.dataset.delmsg); }
   else if(t.dataset.readd){ const m=messages.find(x=>x.id===t.dataset.readd); if(m){ const p=parseMessage(m.text); openEntry({amount:p.amount||m.amount||"", cat:p.cat, sub:p.sub, note:p.merchant||"", ts:Date.now(), source:"message", msg:m.text, msgId:m.id, credit:p.credit}); } }
@@ -421,15 +467,18 @@ function openEntry(init){
    '<div class="scrim" id="scrim"><form class="sheet" id="entryForm" autocomplete="off"><div class="grab"></div>'
    + '<div class="sheet-h"><h3>'+(isMsg?"Add this expense?":editing?"Edit expense":"New expense")+'</h3><button type="button" class="x" id="closeSheet" aria-label="Close">✕</button></div>'
    + (isMsg?'<div class="msgbox">'+esc(form.msg)+'</div>'+(form.credit?'<div class="warn">This looks like money coming in (a refund or deposit), not spending.</div>':"")+(form.amount===""?'<div class="warn">No amount found in the message. Type it below.</div>':""):"")
-   + '<label class="amtfield"><span>$</span><input id="fAmt" inputmode="decimal" placeholder="0.00" value="'+esc(form.amount===""?"":(+form.amount).toFixed(2))+'" aria-label="Amount"></label>'
+   + '<label class="amtfield"><span>'+sym()+'</span><input id="fAmt" inputmode="decimal" placeholder="0.00" value="'+esc(form.amount===""?"":(+form.amount).toFixed(2))+'" aria-label="Amount"></label>'
    + '<div><span class="lab">Category</span><div id="chipBox" style="display:flex;flex-direction:column;gap:10px">'+chipsHTML()+'</div></div>'
    + '<div><label class="lab" for="fNote">Note (optional)</label><input class="inp" id="fNote" maxlength="80" placeholder="Where or what" value="'+esc(form.note)+'"></div>'
+   + '<div id="splitBox"></div>'
    + '<div><label class="lab" for="fWhen">Date and time</label><div class="row2"><input class="inp" type="datetime-local" id="fWhen" value="'+toLocalInput(form.ts)+'"><button type="button" class="ghost" id="fNow">Now</button></div></div>'
    + (isMsg?'<div class="btns"><button type="button" class="ghost" id="skipMsg">Don’t add</button><button class="primary" type="submit">Add expense</button></div>'
            :'<button class="primary" type="submit">'+(editing?"Save changes":"Add expense")+'</button>'+(editing?'<button type="button" class="danger" id="delEntry">Delete expense</button>':""))
    + '</form></div>';
   const amt=$("#fAmt");
   if(!isMsg && !editing) setTimeout(()=>amt.focus(),60);
+  bindSplit(init.split);
+  amt.addEventListener("input", updateSplitCalc);
   $("#chipBox").addEventListener("click",ev=>{
     const b=ev.target.closest(".chip"); if(!b) return;
     if(b.dataset.cat){ form.cat=b.dataset.cat; if(form.cat!=="utilities") form.sub=null; }
@@ -447,17 +496,19 @@ function openEntry(init){
   $("#entryForm").addEventListener("submit",ev=>{
     ev.preventDefault();
     const a=parseFloat(String(amt.value).replace(/[$,\s]/g,""));
-    if(!(a>0)){ amt.focus(); toast("Enter an amount above $0"); return; }
+    if(!(a>0)){ amt.focus(); toast("Enter an amount above "+sym()+"0"); return; }
     if(!form.cat){ toast("Pick a category"); return; }
     if(form.cat==="utilities" && !form.sub){ toast("Pick which utility"); return; }
     const when=new Date($("#fWhen").value); const ts=isNaN(when)?Date.now():+when;
-    const o={id:form.id||newId(), amount:Math.round(a*100)/100, cat:form.cat, sub:form.sub||null, note:$("#fNote").value.trim().slice(0,80), ts, source:form.source, createdAt:form.createdAt||Date.now()};
+    let split=null;
+    if(form.split.on){ const r=computeParts(Math.round(a*100)/100, form.split); if(!r.ok){ toast(r.msg); return; } split={paidBy:form.split.paidBy, mode:form.split.mode, parts:r.parts, my:r.my}; }
+    const o={id:form.id||newId(), amount:Math.round(a*100)/100, cat:form.cat, sub:form.sub||null, note:$("#fNote").value.trim().slice(0,80), ts, source:form.source, createdAt:form.createdAt||Date.now(), split};
     if(form.id) o.updatedAt=Date.now();
     api.putExpense(o);
     if(isMsg) logMsg("added", o);
     const wasEdit=!!form.id;
     closeSheet();
-    toast((wasEdit?"Saved ":"Added ")+money(o.amount)+" · "+labelOf(o));
+    toast((wasEdit?"Saved ":"Added ")+money(o.amount)+" · "+labelOf(o)+(o.split?" · your share "+money(o.split.my):""));
   });
 }
 function closeSheet(){ $("#sheetRoot").innerHTML=""; form=null; }
@@ -467,6 +518,169 @@ function logMsg(status, exp){
   if(view==="messages" && $("#msgIn")) $("#msgIn").value="";
 }
 $("#fab").onclick=()=>openEntry({});
+
+
+// ---------- splitting with friends ----------
+function addPerson(raw){
+  const n=String(raw||"").trim().replace(/\s+/g," ").slice(0,30);
+  if(!n){ toast("Type a name first"); return null; }
+  if(/^(me|you)$/i.test(n)){ toast("Pick a different name"); return null; }
+  const ex=people.find(p=>p.name.toLowerCase()===n.toLowerCase()); if(ex) return ex.name;
+  people.push({name:n, addedAt:Date.now()}); people.sort((a,b)=>a.name.localeCompare(b.name)); api.save(); return n;
+}
+function participants(sp){ const s=["Me"]; sp.with.forEach(n=>{ if(!s.includes(n)) s.push(n); }); if(sp.paidBy!=="Me" && !s.includes(sp.paidBy)) s.push(sp.paidBy); return s; }
+function computeParts(total, sp){
+  const P=participants(sp), n=P.length;
+  if(n<2) return {ok:false, msg:"Pick at least one person to split with"};
+  const cents=Math.round(total*100); let parts;
+  if(sp.mode==="equal"){
+    const base=Math.floor(cents/n); let rem=cents-base*n; const m={};
+    [sp.paidBy].concat(P.filter(x=>x!==sp.paidBy)).forEach(x=>{ m[x]=base+(rem>0?1:0); if(rem>0) rem--; });
+    parts=P.map(x=>({name:x, amt:m[x]/100}));
+  } else if(sp.mode==="exact"){
+    parts=P.map(x=>({name:x, amt:Math.round((parseFloat(sp.vals[x])||0)*100)/100}));
+    const sc=Math.round(parts.reduce((a,p)=>a+p.amt,0)*100);
+    if(sc!==cents) return {ok:false, parts, msg:"Shares add up to "+money(sc/100)+" but the total is "+money(total)+(sc<cents?" ("+money((cents-sc)/100)+" left)":" ("+money((sc-cents)/100)+" too much)")};
+  } else {
+    const pcts=P.map(x=>parseFloat(sp.vals[x])||0), ps=Math.round(pcts.reduce((a,b)=>a+b,0)*100)/100;
+    if(Math.abs(ps-100)>0.001) return {ok:false, msg:"Percentages add up to "+ps+"%. They need to add up to 100%."};
+    const c=P.map((x,i)=>Math.round(cents*pcts[i]/100)); c[P.indexOf(sp.paidBy)]+=cents-c.reduce((a,b)=>a+b,0);
+    parts=P.map((x,i)=>({name:x, amt:c[i]/100, pct:pcts[i]}));
+  }
+  if(parts.some(p=>p.amt<0)) return {ok:false, msg:"Shares can't be negative"};
+  const my=parts.find(p=>p.name==="Me").amt;
+  if(sp.paidBy==="Me" && Math.round(my*100)===cents) return {ok:false, msg:"Give at least one friend a share, or turn off Split"};
+  return {ok:true, parts, my};
+}
+function splitDesc(e){ const s=e.split; if(!s) return ""; return s.parts.map(p=>(p.name==="Me"?"You":p.name)+" "+money(p.amt)+(s.mode==="percent"&&p.pct!=null?" ("+p.pct+"%)":"")).join(", "); }
+function bindSplit(init){
+  form.split = init ? {on:true, paidBy:init.paidBy, mode:init.mode, with:init.parts.map(p=>p.name).filter(n=>n!=="Me"), vals:Object.fromEntries(init.parts.map(p=>[p.name, String(init.mode==="percent"?p.pct:p.amt)]))}
+                    : {on:false, paidBy:"Me", mode:"equal", with:[], vals:{}};
+  const box=$("#splitBox");
+  box.addEventListener("click", ev=>{
+    const b=ev.target.closest("button"); if(!b) return; const sp=form.split;
+    if(b.id==="splitToggle"){ sp.on=!sp.on; }
+    else if(b.dataset.with){ const n=b.dataset.with; if(sp.with.includes(n)||sp.paidBy===n){ sp.with=sp.with.filter(x=>x!==n); if(sp.paidBy===n) sp.paidBy="Me"; } else sp.with.push(n); }
+    else if(b.dataset.payer){ sp.paidBy=b.dataset.payer; if(sp.paidBy!=="Me" && !sp.with.includes(sp.paidBy)) sp.with.push(sp.paidBy); }
+    else if(b.dataset.mode){ if(sp.mode!==b.dataset.mode){ sp.mode=b.dataset.mode; sp.vals={}; } }
+    else if(b.id==="addPerson"){ const n=addPerson($("#newPerson").value); if(!n) return; if(!sp.with.includes(n)) sp.with.push(n); }
+    else return;
+    drawSplit();
+  });
+  box.addEventListener("input", ev=>{ const i=ev.target; if(i.dataset.part!=null){ form.split.vals[i.dataset.part]=i.value; updateSplitCalc(); } });
+  box.addEventListener("keydown", ev=>{ if(ev.target.id==="newPerson" && ev.key==="Enter"){ ev.preventDefault(); $("#addPerson").click(); } });
+  drawSplit();
+}
+function drawSplit(){
+  const box=$("#splitBox"); if(!box||!form) return; const sp=form.split;
+  let h='<button type="button" class="toggle" id="splitToggle" aria-pressed="'+sp.on+'"><span class="tg-dot"></span>Split with friends</button>';
+  if(sp.on){
+    const chips = people.length ? people.map(p=>'<button type="button" class="pchip" data-with="'+esc(p.name)+'" aria-pressed="'+(sp.with.includes(p.name)||sp.paidBy===p.name)+'">'+esc(p.name)+'</button>').join("") : '<span class="help">Add the people you split with.</span>';
+    h+='<div class="split">'
+      +'<div><span class="lab">Split with</span><div class="pchips">'+chips+'</div><div class="row2" style="margin-top:8px"><input class="inp" id="newPerson" maxlength="30" placeholder="Add a name, e.g. Ravi"><button type="button" class="ghost" id="addPerson">Add</button></div></div>'
+      +'<div><span class="lab">Paid by</span><div class="pchips">'+["Me"].concat(people.map(p=>p.name)).map(n=>'<button type="button" class="pchip" data-payer="'+esc(n)+'" aria-pressed="'+(sp.paidBy===n)+'">'+esc(n==="Me"?"You":n)+'</button>').join("")+'</div></div>'
+      +'<div><span class="lab">How to split</span><div class="seg">'+[["equal","Equally"],["exact","Exact "+sym()],["percent","Percent"]].map(([k,l])=>'<button type="button" data-mode="'+k+'" aria-pressed="'+(sp.mode===k)+'">'+l+'</button>').join("")+'</div></div>'
+      +'<div class="parts" id="parts"></div><div class="splitsum" id="splitSum"></div></div>';
+  }
+  box.innerHTML=h;
+  if(sp.on) drawParts();
+}
+function drawParts(){
+  const sp=form.split;
+  $("#parts").innerHTML = participants(sp).map(n=>'<div class="part"><span>'+esc(n==="Me"?"You":n)+(sp.paidBy===n?' <span class="tag">paid</span>':"")+'</span>'
+    +(sp.mode==="equal" ? '<span class="num" data-calc="'+esc(n)+'"></span>'
+      : '<span class="pin">'+(sp.mode==="exact"?sym():"")+'<input class="inp num" inputmode="decimal" data-part="'+esc(n)+'" value="'+esc(sp.vals[n]||"")+'" placeholder="'+(sp.mode==="percent"?"0":"0.00")+'" aria-label="'+esc((n==="Me"?"Your":n+"'s")+" share")+'">'+(sp.mode==="percent"?"%":"")+'</span>')
+    +'</div>').join("");
+  updateSplitCalc();
+}
+function curTotal(){ const el=$("#fAmt"); const v=el?parseFloat(String(el.value).replace(/[$,\s]/g,"")):0; return v>0?Math.round(v*100)/100:0; }
+function updateSplitCalc(){
+  if(!form || !form.split || !form.split.on || !$("#splitSum")) return;
+  const el=$("#splitSum"), total=curTotal(), sp=form.split;
+  if(participants(sp).length<2){ el.textContent="Pick at least one person to split with."; el.className="splitsum warn"; return; }
+  if(!total){ el.textContent="Enter the amount to see each share."; el.className="splitsum"; document.querySelectorAll("[data-calc]").forEach(x=>x.textContent="—"); return; }
+  const r=computeParts(total, sp);
+  if(sp.mode==="equal" && r.parts) r.parts.forEach(p=>{ document.querySelectorAll("[data-calc]").forEach(x=>{ if(x.dataset.calc===p.name) x.textContent=money(p.amt); }); });
+  if(r.ok){ el.textContent="Your share "+money(r.my)+" · "+(sp.paidBy==="Me"?"friends owe you "+money(Math.round((total-r.my)*100)/100):"you owe "+sp.paidBy+" "+money(r.my)); el.className="splitsum ok"; }
+  else { el.textContent=r.msg; el.className="splitsum warn"; }
+}
+function balances(){
+  const b={}; people.forEach(p=>b[p.name]=0);
+  expenses.forEach(e=>{ const s=e.split; if(!s) return;
+    if(s.paidBy==="Me") s.parts.forEach(p=>{ if(p.name!=="Me") b[p.name]=(b[p.name]||0)+p.amt; });
+    else b[s.paidBy]=(b[s.paidBy]||0)-s.my; });
+  settlements.forEach(x=>{ b[x.name]=(b[x.name]||0)+(x.dir==="in"?-x.amt:x.amt); });
+  Object.keys(b).forEach(k=>b[k]=Math.round(b[k]*100)/100);
+  return b;
+}
+function balText(n,v){ return v>0.004 ? esc(n)+" owes you" : v<-0.004 ? "You owe "+esc(n) : "Settled up"; }
+function balCls(v){ return v>0.004?"good":v<-0.004?"bad":""; }
+function friendActivity(name){
+  const rows=[];
+  expenses.forEach(e=>{ const s=e.split; if(!s) return; const what=labelOf(e)+(e.note?" · "+e.note:"");
+    if(s.paidBy==="Me"){ const p=s.parts.find(p=>p.name===name); if(p && p.amt) rows.push({ts:e.ts, what, sub:"You paid "+money(+e.amount)+" · "+name+"'s share", eff:p.amt}); }
+    else if(s.paidBy===name){ if(s.my) rows.push({ts:e.ts, what, sub:name+" paid "+money(+e.amount)+" · your share", eff:-s.my}); } });
+  settlements.filter(x=>x.name===name).forEach(x=>rows.push({ts:x.ts, what:x.dir==="in"?name+" paid you":"You paid "+name, sub:"Payment", eff:x.dir==="in"?-x.amt:x.amt, sid:x.id, dir:x.dir}));
+  return rows.sort((a,b)=>b.ts-a.ts);
+}
+function summaryText(name){
+  const v=balances()[name]||0, act=friendActivity(name).slice(0,15);
+  const lines=["Hi "+name+", here's our split summary from Spend Log:"];
+  act.forEach(r=>{ const d=fmtMD(r.ts);
+    if(r.sid) lines.push("• "+d+" · "+(r.dir==="in"?"You paid me ":"I paid you ")+money(Math.abs(r.eff)));
+    else lines.push("• "+d+" · "+r.what+": "+(r.eff>0?"you owe me ":"I owe you ")+money(Math.abs(r.eff))); });
+  lines.push(v>0.004?"Total: you owe me "+money(v):v<-0.004?"Total: I owe you "+money(-v):"We're all settled up.");
+  return lines.join("\n");
+}
+function viewSplit(){
+  const b=balances(), names=Object.keys(b).sort((x,y)=>Math.abs(b[y])-Math.abs(b[x])||x.localeCompare(y));
+  const owed=names.reduce((a,n)=>a+Math.max(0,b[n]),0), owe=names.reduce((a,n)=>a+Math.max(0,-b[n]),0), net=Math.round((owed-owe)*100)/100;
+  const splits=expenses.filter(e=>e.split).slice(0,20);
+  const addRow='<div class="row2"><input class="inp" id="newPersonMain" maxlength="30" placeholder="Add a name, e.g. Ravi"><button class="ghost" id="addPersonMain">Add person</button></div>';
+  const hero='<section class="hero"><span class="k">'+(net>0.004?"Overall, you are owed":net<-0.004?"Overall, you owe":"Overall")+'</span><span class="big num">'+(Math.abs(net)>0.004?money(Math.abs(net)):"All settled up")+'</span><div class="meta num"><span class="good">Owed to you '+money(owed)+'</span><span class="bad">You owe '+money(owe)+'</span></div></section>';
+  const list = names.length ? '<div class="list">'+names.map(n=>'<button class="item" data-friend="'+esc(n)+'"><span class="bar" style="background:'+(b[n]>0.004?"var(--good)":b[n]<-0.004?"var(--bad)":"var(--line)")+'"></span><span class="mid"><span class="t1">'+esc(n)+'</span><span class="t2">'+balText(n,b[n])+'</span></span><span class="amt num '+balCls(b[n])+'">'+(Math.abs(b[n])>0.004?money(Math.abs(b[n])):"—")+'</span></button>').join("")+'</div>'
+    : '<div class="card empty"><b>No friends added yet</b><span>Add the names of people you share costs with. Then turn on <strong>Split with friends</strong> when you add an expense.</span></div>';
+  return hero
+   + '<section style="display:flex;flex-direction:column;gap:10px"><div class="sec-h" style="margin:0"><h2>Friends</h2><small>Tap a name to settle up</small></div>'+list+addRow+'</section>'
+   + (splits.length ? '<section style="display:flex;flex-direction:column;gap:10px"><div class="sec-h" style="margin:0"><h2>Recent splits</h2></div><div class="list">'+splits.map(itemHTML).join("")+'</div></section>' : "");
+}
+let friendState=null;
+function openFriend(name){
+  if(!friendState || friendState.name!==name) friendState={name, mode:null};
+  const fs=friendState, v=balances()[name]||0, act=friendActivity(name);
+  const canRemove = Math.abs(v)<0.005 && !act.length;
+  const dirDefault = v<0 ? "out" : "in";
+  if(fs.mode==="settle" && !fs.dir) fs.dir=dirDefault;
+  let body='';
+  if(fs.mode==="settle"){
+    body='<div class="split"><span class="lab" style="margin:0">Record a payment</span><div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" data-dir="in" aria-pressed="'+(fs.dir==="in")+'">'+esc(name)+' paid you</button><button type="button" data-dir="out" aria-pressed="'+(fs.dir==="out")+'">You paid '+esc(name)+'</button></div><label class="amtfield"><span>'+sym()+'</span><input id="setAmt" inputmode="decimal" value="'+(Math.abs(v)>0.004?Math.abs(v).toFixed(2):"")+'" placeholder="0.00" aria-label="Payment amount"></label><button class="primary" id="saveSettle">Save payment</button></div>';
+  } else if(fs.mode==="summary"){
+    body='<div class="split"><span class="lab" style="margin:0">Summary to send '+esc(name)+'</span><textarea class="inp" id="sumText" readonly style="min-height:150px">'+esc(summaryText(name))+'</textarea><div class="acts"><button class="ghost" id="copySum">Copy</button>'+(navigator.share?'<button class="ghost" id="shareSum">Share…</button>':'<span></span>')+'</div></div>';
+  }
+  $("#sheetRoot").innerHTML='<div class="scrim" id="scrim"><div class="sheet"><div class="grab"></div>'
+   +'<div class="sheet-h"><h3>'+esc(name)+'</h3><button class="x" id="closeSheet" aria-label="Close">✕</button></div>'
+   +'<section class="hero"><span class="k">'+balText(name,v)+'</span><span class="big num '+balCls(v)+'">'+(Math.abs(v)>0.004?money(Math.abs(v)):"$0.00")+'</span></section>'
+   +'<div class="acts"><button class="ghost" id="fSettle" aria-pressed="'+(fs.mode==="settle")+'">Settle up</button><button class="ghost" id="fSummary">Send summary</button></div>'
+   + body
+   +'<div><span class="lab">Activity</span>'+(act.length?'<div>'+act.map(r=>'<div class="arow"><span><b>'+esc(r.what)+'</b><br><span class="t2">'+fmtDayLong(r.ts)+' · '+esc(r.sub)+'</span></span><span class="num" style="text-align:right"><b class="'+(r.eff>0?"good":"bad")+'">'+(r.eff>0?"+":"−")+money(Math.abs(r.eff))+'</b>'+(r.sid?'<br><button class="ghost" style="padding:3px 8px;font-size:12px;margin-top:4px" data-delset="'+esc(r.sid)+'">Undo</button>':"")+'</span></div>').join("")+'</div><p class="help" style="margin-top:8px">+ adds to what '+esc(name)+' owes you. − adds to what you owe '+esc(name)+'.</p>':'<p class="help">No shared expenses with '+esc(name)+' yet.</p>')+'</div>'
+   +(canRemove?'<button class="danger" id="removePerson">Remove '+esc(name)+'</button>':'')
+   +'</div></div>';
+  $("#closeSheet").onclick=()=>{ friendState=null; closeSheet(); };
+  $("#scrim").addEventListener("click",ev=>{ if(ev.target.id==="scrim"){ friendState=null; closeSheet(); } });
+  $("#fSettle").onclick=()=>{ fs.mode=fs.mode==="settle"?null:"settle"; fs.dir=null; openFriend(name); };
+  $("#fSummary").onclick=()=>{ fs.mode=fs.mode==="summary"?null:"summary"; openFriend(name); };
+  document.querySelectorAll("[data-dir]").forEach(b=>b.onclick=()=>{ fs.dir=b.dataset.dir; const keep=$("#setAmt").value; openFriend(name); $("#setAmt").value=keep; });
+  if($("#saveSettle")) $("#saveSettle").onclick=()=>{
+    const a=parseFloat(String($("#setAmt").value).replace(/[$,\s]/g,""));
+    if(!(a>0)){ toast("Enter an amount above "+sym()+"0"); return; }
+    settlements.push({id:newId(), name, amt:Math.round(a*100)/100, dir:fs.dir, ts:Date.now()}); api.save();
+    fs.mode=null; openFriend(name); toast("Payment of "+money(a)+" recorded");
+  };
+  if($("#copySum")) $("#copySum").onclick=()=>{ const ta=$("#sumText"); const done=()=>toast("Summary copied"); try{ navigator.clipboard.writeText(ta.value).then(done,()=>{ ta.select(); document.execCommand("copy"); done(); }); }catch(_){ ta.select(); try{ document.execCommand("copy"); done(); }catch(__){ toast("Select the text and copy it"); } } };
+  if($("#shareSum")) $("#shareSum").onclick=()=>{ navigator.share({text:$("#sumText").value}).catch(()=>{}); };
+  document.querySelectorAll("[data-delset]").forEach(b=>b.onclick=()=>{ settlements=settlements.filter(x=>x.id!==b.dataset.delset); api.save(); openFriend(name); toast("Payment removed"); });
+  if($("#removePerson")) $("#removePerson").onclick=()=>{ people=people.filter(p=>p.name!==name); api.save(); friendState=null; closeSheet(); toast(name+" removed"); };
+}
 
 // ---------- message parsing ----------
 const KEYWORDS = [
@@ -486,8 +700,8 @@ function mealByHour(h){ return h<11?"breakfast": h<16?"lunch": h<21?"dinner":"sn
 function parseMessage(text){
   const t=String(text||"");
   let amount=null, m;
-  const pats=[/(?:US\$|USD\s?|\$)\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i, /(?:Rs\.?|INR|₹)\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i, /\b([0-9][0-9,]*\.[0-9]{2})\b/];
-  for(const p of pats){ m=t.match(p); if(m){ amount=parseFloat(m[1].replace(/,/g,"")); break; } }
+  const pats=[/(?:US\$|USD\s?|\$)\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i, /(?:Rs\.?|INR|₹)\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i, /(?:€|EUR\s?)\s?([0-9][0-9.,]*(?:,[0-9]{1,2})?)/i, /([0-9][0-9.,]*(?:,[0-9]{2})?)\s?(?:€|EUR)\b/i, /\b([0-9][0-9,]*\.[0-9]{2})\b/];
+  for(const p of pats){ m=t.match(p); if(m){ let raw=m[1].replace(/[.,]$/,""); raw = /^\d{1,3}(\.\d{3})*,\d{1,2}$|^\d+,\d{1,2}$/.test(raw) ? raw.replace(/\./g,"").replace(",",".") : raw.replace(/,/g,""); amount=parseFloat(raw); if(amount>0) break; } }
   let merchant="";
   m=t.match(/\b(?:at|to|@|from merchant)\s+([A-Za-z0-9][A-Za-z0-9&'.*\- ]{1,40}?)(?=\s+(?:on|for|using|with|via|ref|card|ending|was|has)\b|[.,;:\n!]|$)/i);
   if(m) merchant=m[1].replace(/\s+/g," ").replace(/[*\-.\s]+$/,"").trim();
@@ -524,13 +738,12 @@ function openExport(){
   const opts=periodsForExport();
   exportChoice = opts[0].k.startsWith("view") ? opts[0].k : view==="week"?"week": view==="month"?"month":"month";
   const draw=()=>{
-    $("#sheetRoot").innerHTML='<div class="scrim" id="scrim"><div class="sheet"><div class="grab"></div><div class="sheet-h"><h3>Excel report &amp; backup</h3><button class="x" id="closeSheet" aria-label="Close">✕</button></div><p class="help">The workbook has four sheets: every expense with date and time, totals by category, daily totals, and weekly totals.</p><div class="opts">'+opts.map(o=>{ const l=inRange(o.from,o.to); return '<button class="opt" data-k="'+o.k+'" aria-pressed="'+(exportChoice===o.k)+'"><span>'+esc(o.label)+'</span><small class="num">'+l.length+' entries · '+money(sum(l))+'</small></button>'; }).join("")+'</div><button class="primary" id="doExport">Download Excel file</button><div style="border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px"><span class="lab" style="margin:0">Backup</span><p class="help">Your expenses are stored on this phone. Save a backup file now and then, and restore it on a new phone or browser.'+lastBackupText()+'</p><div class="btns"><button class="ghost" id="doBackup">Save backup</button><label class="ghost" style="text-align:center;cursor:pointer">Restore<input type="file" id="restoreIn" accept=".json,application/json" hidden></label></div></div></div></div>';
+    $("#sheetRoot").innerHTML='<div class="scrim" id="scrim"><div class="sheet"><div class="grab"></div><div class="sheet-h"><h3>Excel report &amp; backup</h3><button class="x" id="closeSheet" aria-label="Close">✕</button></div><p class="help">The workbook has four sheets: every expense with date and time, totals by category, daily totals, and weekly totals.</p><div class="opts">'+opts.map(o=>{ const l=inRange(o.from,o.to); return '<button class="opt" data-k="'+o.k+'" aria-pressed="'+(exportChoice===o.k)+'"><span>'+esc(o.label)+'</span><small class="num">'+l.length+' entries · '+money(sum(l))+'</small></button>'; }).join("")+'</div><button class="primary" id="doExport">Download Excel file</button>'+backupHTML()+'</div></div>';
     $("#closeSheet").onclick=closeSheet;
     $("#scrim").addEventListener("click",ev=>{ if(ev.target.id==="scrim") closeSheet(); });
     document.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{ exportChoice=b.dataset.k; draw(); });
     $("#doExport").onclick=()=>{ const o=opts.find(x=>x.k===exportChoice); doExport(o); };
-    $("#doBackup").onclick=backupNow;
-    $("#restoreIn").onchange=ev=>{ const f=ev.target.files&&ev.target.files[0]; if(f) restoreFrom(f); };
+    bindBackup();
   };
   draw();
 }
@@ -539,13 +752,13 @@ $("#exportBtn").onclick=openExport;
 function buildWorkbook(o){
   const list=inRange(o.from,o.to).sort((a,b)=>a.ts-b.ts);
   const X=window.XLSX; const wb=X.utils.book_new();
-  const fmt='"$"#,##0.00';
+  const fmt='"'+sym()+'"#,##0.00';
   const setMoney=(ws,col,r0,r1)=>{ for(let r=r0;r<=r1;r++){ const c=ws[X.utils.encode_cell({r,c:col})]; if(c&&typeof c.v==="number") c.z=fmt; } };
   // Expenses
-  const rows=[["Date","Time","Day","Category","Type","Note","Amount","Source"]];
-  list.forEach(e=>{ const d=new Date(e.ts); const c=CAT[e.cat]||CAT.other; rows.push([d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()), fmtTime(e.ts), d.toLocaleDateString("en-US",{weekday:"short"}), GRP[c.group].label, e.cat==="utilities"?(e.sub||"Utilities"):c.label, e.note||"", +e.amount, e.source==="message"?"Message":"Manual"]); });
+  const rows=[["Date","Time","Day","Category","Type","Note","Your share","Total paid","Split","Source"]];
+  list.forEach(e=>{ const d=new Date(e.ts); const c=CAT[e.cat]||CAT.other; rows.push([d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()), fmtTime(e.ts), d.toLocaleDateString("en-US",{weekday:"short"}), GRP[c.group].label, e.cat==="utilities"?(e.sub||"Utilities"):c.label, e.note||"", share(e), +e.amount, e.split?splitDesc(e):"", e.source==="message"?"Message":"Manual"]); });
   rows.push([]); rows.push(["","","","","","Total",sum(list)]);
-  let ws=X.utils.aoa_to_sheet(rows); ws["!cols"]=[{wch:12},{wch:9},{wch:6},{wch:12},{wch:13},{wch:28},{wch:12},{wch:9}]; setMoney(ws,6,1,rows.length); X.utils.book_append_sheet(wb,ws,"Expenses");
+  let ws=X.utils.aoa_to_sheet(rows); ws["!cols"]=[{wch:12},{wch:9},{wch:6},{wch:12},{wch:13},{wch:24},{wch:11},{wch:11},{wch:40},{wch:9}]; setMoney(ws,6,1,rows.length); setMoney(ws,7,1,rows.length); X.utils.book_append_sheet(wb,ws,"Expenses");
   // By category
   const t=sum(list); const cr=[["Category","Type","Amount","Share of total","Entries"]];
   GROUPS.forEach(g=>{
@@ -566,6 +779,15 @@ function buildWorkbook(o){
   const wkMap=new Map(); list.forEach(e=>{ const k=+sow(e.ts); if(!wkMap.has(k)) wkMap.set(k,[]); wkMap.get(k).push(e); });
   [...wkMap.keys()].sort((a,b)=>a-b).forEach(k=>{ const arr=wkMap.get(k), a=new Date(k), b=addDays(a,6); wr.push([a.getFullYear()+"-"+pad(a.getMonth()+1)+"-"+pad(a.getDate()), b.getFullYear()+"-"+pad(b.getMonth()+1)+"-"+pad(b.getDate())].concat(GROUPS.map(g=>sum(arr.filter(e=>(CAT[e.cat]?.group||"other")===g.id)))).concat([sum(arr),arr.length])); });
   ws=X.utils.aoa_to_sheet(wr); ws["!cols"]=[{wch:20},{wch:12}].concat(GROUPS.map(()=>({wch:11}))).concat([{wch:11},{wch:8}]); for(let c=2;c<wr[0].length-1;c++) setMoney(ws,c,1,wr.length); X.utils.book_append_sheet(wb,ws,"Weekly");
+  // Splits
+  const sl=list.filter(e=>e.split);
+  const sr=[["Date","Item","Paid by","Total","Your share","Shares"]];
+  sl.forEach(e=>{ const d=new Date(e.ts); sr.push([d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()), labelOf(e)+(e.note?" - "+e.note:""), e.split.paidBy==="Me"?"You":e.split.paidBy, +e.amount, e.split.my, splitDesc(e)]); });
+  sr.push([]); sr.push(["Balances today (all time)"]); sr.push(["Person","Amount","Status"]);
+  const bal=balances(); Object.keys(bal).sort().forEach(n=>{ const v=bal[n]; sr.push([n, Math.abs(v), v>0.004?"Owes you":v<-0.004?"You owe":"Settled up"]); });
+  ws=X.utils.aoa_to_sheet(sr); ws["!cols"]=[{wch:12},{wch:26},{wch:10},{wch:11},{wch:11},{wch:44}];
+  for(let r=1;r<sr.length;r++){ [1,3,4].forEach(c=>{ const cell=ws[X.utils.encode_cell({r,c})]; if(cell&&typeof cell.v==="number") cell.z=fmt; }); }
+  X.utils.book_append_sheet(wb,ws,"Splits");
   return {wb, count:list.length};
 }
 function doExport(o){
@@ -573,9 +795,31 @@ function doExport(o){
   const {wb,count}=buildWorkbook(o);
   if(!count){ toast("No expenses in that period"); return; }
   const out=window.XLSX.write(wb,{bookType:"xlsx",type:"array"});
-  const name="Spend report - "+o.label.replace(/[^\w ]+/g,"")+" - "+new Date().toISOString().slice(0,10)+".xlsx";
-  saveBlob(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), name);
-  closeSheet(); toast("Report downloaded");
+  const name="Spend report - "+o.label.replace(/[^\w ]+/g,"")+" - "+localDay()+".xlsx";
+  saveFile(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), name, "xlsx").then(r=>{
+    if(r==="cancelled") return;
+    closeSheet(); toast(r==="saved"?"Report saved to the folder you chose": r==="shared"?"Report ready":"Report downloaded to your Downloads folder");
+  });
+}
+const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+async function saveFile(blob, name, kind){
+  // 1) Computers (Chrome, Edge): a "Save as" window to pick the folder; it remembers the last folder.
+  if(window.showSaveFilePicker && !isMobile()){
+    try{
+      const type = kind==="json" ? {description:"Spend Log backup", accept:{"application/json":[".json"]}} : {description:"Excel workbook", accept:{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"]}};
+      const h = await window.showSaveFilePicker({suggestedName:name, id:"spendlog-"+kind, startIn:"documents", types:[type]});
+      const w = await h.createWritable(); await w.write(blob); await w.close(); return "saved";
+    }catch(e){ if(e && e.name==="AbortError") return "cancelled"; }
+  }
+  // 2) Phones: the share sheet, where "Save to Files" (iPhone) or Drive/Files (Android) lets you pick a folder.
+  if(isMobile() && navigator.share && navigator.canShare){
+    try{
+      const f = new File([blob], name, {type:blob.type});
+      if(navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:name}); return "shared"; }
+    }catch(e){ if(e && e.name==="AbortError") return "cancelled"; }
+  }
+  // 3) Everything else: a normal download.
+  saveBlob(blob, name); return "downloaded";
 }
 function saveBlob(blob, name){
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
@@ -583,11 +827,34 @@ function saveBlob(blob, name){
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
 function backupNow(){
-  const data={app:"daily-spend-log", version:1, savedAt:new Date().toISOString(), expenses, messages};
-  saveBlob(new Blob([JSON.stringify(data)],{type:"application/json"}), "Spend Log backup "+new Date().toISOString().slice(0,10)+".json");
-  try{ localStorage.setItem("spendlog.lastBackup", String(Date.now())); }catch(_){}
-  toast("Backup file downloaded");
+  const data={app:"daily-spend-log", version:3, savedAt:new Date().toISOString(), currency, expenses, messages, people, settlements};
+  saveFile(new Blob([JSON.stringify(data)],{type:"application/json"}), "Spend Log backup "+localDay()+".json", "json").then(r=>{
+    if(r==="cancelled") return;
+    try{ localStorage.setItem("spendlog.lastBackup", String(Date.now())); }catch(_){}
+    const lb=document.getElementById("lastBackup"); if(lb) lb.textContent=lastBackupText().trim();
+    toast(r==="saved"?"Backup saved to the folder you chose": r==="shared"?"Backup ready":"Backup downloaded to your Downloads folder");
+  });
 }
+function backupHTML(){
+  const how = isMobile() ? "You’ll pick where to save it: on iPhone tap <b>Save to Files</b>, then choose a folder; on Android choose Files or Drive." : (window.showSaveFilePicker ? "You’ll choose the folder and file name. It remembers the folder next time." : "It saves to your Downloads folder.");
+  return '<div style="border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px"><span class="lab" style="margin:0">Backup</span><p class="help">Your expenses are stored on this device. '+how+' <span id="lastBackup">'+lastBackupText().trim()+'</span></p><div class="btns"><button class="ghost" id="doBackup">Save backup…</button><label class="ghost" style="text-align:center;cursor:pointer">Restore<input type="file" id="restoreIn" accept=".json,application/json" hidden></label></div></div>';
+}
+function bindBackup(){
+  $("#doBackup").onclick=backupNow;
+  $("#restoreIn").onchange=ev=>{ const f=ev.target.files&&ev.target.files[0]; if(f) restoreFrom(f); };
+}
+function setCurrency(c){ if(!CURRENCIES[c]) return; currency=c; try{ localStorage.setItem("spendlog.currency", c); }catch(_){} render(); }
+function openSettings(){
+  $("#sheetRoot").innerHTML='<div class="scrim" id="scrim"><div class="sheet"><div class="grab"></div><div class="sheet-h"><h3>Settings</h3><button class="x" id="closeSheet" aria-label="Close">✕</button></div>'
+   +'<div><span class="lab">Currency</span><div class="opts">'+Object.entries(CURRENCIES).map(([k,c])=>'<button class="opt" data-cur="'+k+'" aria-pressed="'+(currency===k)+'"><span style="display:flex;align-items:center;gap:10px"><span class="cur-sym">'+c.sym+'</span>'+c.name+'</span><small class="num">'+(1234.5).toLocaleString(c.loc,{minimumFractionDigits:2})+'</small></button>').join("")+'</div><p class="help" style="margin-top:8px">This changes the symbol shown everywhere, including Excel reports. Amounts you already entered aren’t converted.</p></div>'
+   + backupHTML()
+   +'<p class="help" style="text-align:center">© 2026 Saberi · Daily Spend Log</p></div></div>';
+  $("#closeSheet").onclick=closeSheet;
+  $("#scrim").addEventListener("click",ev=>{ if(ev.target.id==="scrim") closeSheet(); });
+  document.querySelectorAll("[data-cur]").forEach(b=>b.onclick=()=>{ setCurrency(b.dataset.cur); openSettings(); toast("Currency set to "+CURRENCIES[b.dataset.cur].name); });
+  bindBackup();
+}
+$("#settingsBtn").onclick=openSettings;
 function restoreFrom(file){
   const r=new FileReader();
   r.onload=()=>{
@@ -597,6 +864,9 @@ function restoreFrom(file){
       const ids=new Set(expenses.map(e=>e.id)); let added=0;
       j.expenses.forEach(e=>{ if(e && e.id && !ids.has(e.id) && +e.amount>0 && e.ts){ expenses.push(e); added++; } });
       const mids=new Set(messages.map(m=>m.id)); (j.messages||[]).forEach(m=>{ if(m && m.id && !mids.has(m.id)) messages.push(m); });
+      if(j.currency && CURRENCIES[j.currency]){ currency=j.currency; try{ localStorage.setItem("spendlog.currency", currency); }catch(_){} }
+      (j.people||[]).forEach(p=>{ if(p && p.name && !people.some(x=>x.name.toLowerCase()===String(p.name).toLowerCase())) people.push({name:String(p.name).slice(0,30), addedAt:p.addedAt||Date.now()}); });
+      const sids=new Set(settlements.map(x=>x.id)); (j.settlements||[]).forEach(x=>{ if(x && x.id && !sids.has(x.id) && +x.amt>0) settlements.push(x); });
       expenses.sort(byTsDesc); messages.sort(byTsDesc); lsSave(); closeSheet(); render();
       toast(added ? "Restored "+added+" expenses" : "Nothing new in that backup");
     }catch(_){ toast("That file isn't a Spend Log backup"); }

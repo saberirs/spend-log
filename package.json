@@ -1,0 +1,15 @@
+{
+  "name": "daily-spend-log",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Daily Spend Log expense tracker. Source code. Copyright (c) 2026 Saberi. All rights reserved.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "python3 build.py --hosts spend-log-v1.netlify.app",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "html-minifier-terser": "7.2.0",
+    "javascript-obfuscator": "4.1.1"
+  }
+}

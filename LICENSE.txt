@@ -1,0 +1,11 @@
+Daily Spend Log
+Copyright (c) 2026 Saberi. All rights reserved.
+
+You may use this app through its published link for personal expense tracking.
+
+You may not copy, modify, redistribute, republish, sell, or create derivative
+works from this app's source code, design, or assets, in whole or in part,
+without written permission from the copyright holder.
+
+The bundled SheetJS library (xlsx.full.min.js) is licensed separately under
+the Apache License 2.0 by SheetJS LLC.
