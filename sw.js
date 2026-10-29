@@ -1,15 +1,84 @@
-// Offline support: serve app files from cache, refresh them in the background.
-const CACHE = "spendlog-v4";
-const FILES = ["./", "index.html", "xlsx.full.min.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
-self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
-self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
-self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
-  e.respondWith(caches.match(e.request).then(hit => {
-    const net = fetch(e.request).then(res => {
-      if (res && res.ok && new URL(e.request.url).origin === location.origin) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+/*
+ * Spenderrr – offline support (service worker)
+ * Version 2026.10.26
+ *
+ * Network first: when online, every open gets the latest version from Netlify,
+ * so Android, iPhone and desktop always run the same release.
+ * When offline, it falls back to the last saved copy so the app still opens.
+ * Google sign-in / Drive and other outside addresses are never touched.
+ */
+var CACHE = 'spendlog-2026.10.26';
+var APP_FILES = [
+  '/',
+  '/index.html',
+  '/backup.js',
+  '/whatsapp.js',
+  '/ledger.js',
+  '/fonts/plus-jakarta-sans-latin-400-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-ext-400-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-500-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-ext-500-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-600-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-ext-600-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-700-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-ext-700-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-800-normal.woff2',
+  '/fonts/plus-jakarta-sans-latin-ext-800-normal.woff2',
+  '/manifest.webmanifest',
+  '/privacy.html',
+  '/xlsx.full.min.js',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png'
+];
+
+self.addEventListener('install', function (event) {
+  event.waitUntil(
+    caches.open(CACHE).then(function (cache) {
+      // Save each file on its own, so one missing file never blocks the update.
+      return Promise.all(APP_FILES.map(function (url) {
+        return fetch(url, { cache: 'no-store' })
+          .then(function (res) { if (res.ok) return cache.put(url, res); })
+          .catch(function () { /* offline or missing: skip */ });
+      }));
+    }).then(function () { return self.skipWaiting(); })   // take over right away
+  );
+});
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(
+    caches.keys().then(function (keys) {
+      // Remove every older saved copy (e.g. spendlog-v4).
+      return Promise.all(keys.filter(function (k) { return k !== CACHE; })
+        .map(function (k) { return caches.delete(k); }));
+    }).then(function () { return self.clients.claim(); })
+  );
+});
+
+self.addEventListener('fetch', function (event) {
+  var req = event.request;
+  if (req.method !== 'GET') return;
+  var url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;        // let Google, fonts etc. go straight through
+  if (url.pathname.indexOf('/.netlify/') === 0) return;
+
+  var isPage = req.mode === 'navigate';
+  // Each page under its own name (so opening privacy.html never replaces the app's offline copy); ignore ?v=…
+  var key = url.pathname === '/' ? '/index.html' : url.pathname;
+
+  event.respondWith(
+    fetch(req, { cache: 'no-store' }).then(function (res) {
+      if (res.ok && res.type === 'basic' && !res.redirected) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function (cache) { cache.put(key, copy); });
+      }
       return res;
-    }).catch(() => hit);
-    return hit || net;
-  }));
+    }).catch(function () {
+      return caches.open(CACHE).then(function (cache) {
+        return cache.match(key)
+          .then(function (hit) { return hit || (isPage ? cache.match('/index.html') : null); })
+          .then(function (hit) { return hit || new Response('Offline', { status: 503, statusText: 'Offline' }); });
+      });
+    })
+  );
 });

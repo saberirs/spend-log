@@ -1,6 +1,26 @@
+# Netlify headers for Spenderrr (version 2026.10.26)
+# Scripts: only the app's own files, Google sign-in, and the two scripts inside index.html,
+# allowed by their exact fingerprint (sha256). If index.html's scripts change, run tests/update_script_hashes.py, then the tests:
+# they recompute these fingerprints and fail if this file is out of date.
+# Same protections as before, plus the Google addresses needed for "Back up to Google Drive":
+#   accounts.google.com  -> Google sign-in script, styles and sign-in window
+#   www.googleapis.com   -> Google Drive API (save / restore the backup file)
+# Referrer-Policy changed from no-referrer: Google sign-in needs to know which site is asking.
+# It now sends only the site address (https://spend-log-v1.netlify.app) to other sites, never the full page URL.
+
 /*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-H15GkzhZ5WVHZeVoStlhN2bH0mXWj77dVy1W8r9uNzY=' 'sha256-bJq5tO8J/GF8zfNFovJ9iyp9HCPGRNUweDlSxWdPbDY=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com; frame-src https://accounts.google.com/gsi/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
-  Referrer-Policy: no-referrer
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+# Always check for a new offline file so updates reach every device
+/sw.js
+  Cache-Control: no-cache
+
+# Font files never change under the same name: let phones keep them for a year
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
