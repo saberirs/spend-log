@@ -1,6 +1,6 @@
 {
-  "name": "Daily Spend Log",
-  "short_name": "Spend Log",
+  "name": "Spenderrr",
+  "short_name": "Spenderrr",
   "description": "Track daily expenses by category, see weekly and monthly totals, and download Excel reports.",
   "start_url": "./",
   "scope": "./",

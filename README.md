@@ -1,32 +1,62 @@
-# Daily Spend Log (standalone)
+# Daily Spend Log — source code
 
-A phone app for tracking daily expenses. No account or Claude login needed.
-Works on iPhone and Android, installs to the Home Screen with its own icon,
-and works offline after the first visit.
+Copyright (c) 2026 Saberi. All rights reserved. This folder is the readable
+original. Keep it private: on your computer, an external drive, or a private
+GitHub repository. Never upload it to the public website.
 
-## Put it online (free, GitHub Pages)
+Live app: https://spend-log-v1.netlify.app/
 
-1. Create a new public repository on GitHub, for example `spend-log`.
-2. Upload all files in this folder (Add file → Upload files), then Commit.
-3. Go to Settings → Pages. Under "Build and deployment", choose
-   Source: Deploy from a branch, Branch: `main`, folder: `/ (root)`. Save.
-4. After about a minute, your link is shown at the top of that page:
-   `https://<your-username>.github.io/spend-log/`
-5. Share that link.
+## What's in this folder
 
-## Install on a phone
+| File | Purpose |
+| --- | --- |
+| index.html | The whole app: layout, styles and code (readable) |
+| sw.js | Offline support. Raise `spendlog-vN` by one on every release |
+| manifest.webmanifest | Lets phones install it as an app |
+| *.png | App icons |
+| xlsx.full.min.js | SheetJS library for Excel reports (Apache 2.0) |
+| LICENSE.txt | Your copyright and no-copying terms |
+| _headers | Netlify security headers |
+| build.py | Makes the protected (obfuscated, domain-locked) deploy folder |
+| package.json | The build tools to install |
 
-- iPhone (Safari): open the link → Share → Add to Home Screen → Add.
-- Android (Chrome): open the link → menu (⋮) → Install app (or Add to Home screen).
+## Run it locally
 
-## Where data is stored
+```bash
+python3 -m http.server 8080
+```
 
-Each person's expenses stay on their own phone, in that browser.
-Nobody else, including you, can see them.
-Use Excel → Save backup now and then. Restore loads a backup on a new phone.
-Deleting the app or clearing browser data erases entries that weren't backed up.
+Open http://localhost:8080 in a browser. Local addresses are always allowed,
+even in the protected build.
 
-## Updating the app
+## Build the protected version
 
-Replace `index.html` in the repository. To make sure phones pick up the
-new version, also change `spendlog-v1` to `spendlog-v2` (and so on) in `sw.js`.
+One-time setup (needs Node.js 18+ and Python 3):
+
+```bash
+npm install
+```
+
+Each release:
+
+1. Edit `index.html` and raise the version in `sw.js` (for example `spendlog-v4` → `spendlog-v5`).
+2. Run `python3 build.py --hosts spend-log-v1.netlify.app` (or `npm run build`).
+3. The protected app is written to `../spendlog-deploy`.
+4. On Netlify, open the spend-log-v1 project and drag that folder onto **Production deploys**.
+
+If you change your site address or add a custom domain, list every address:
+`python3 build.py --hosts spend-log-v1.netlify.app,www.yourdomain.com`
+
+## Keep a backup of this source
+
+- Copy this folder (or the zip it came in) to a second place, such as an external drive or cloud storage.
+- Or use a private GitHub repository: create it with visibility **Private**, then `git init`, `git add .`, `git commit -m "Spend Log source"`, `git remote add origin <repo url>`, `git push -u origin main`.
+- `node_modules` is recreated by `npm install`, so you don't need to back it up.
+
+## Features
+
+Quick expense entry with colored categories (Food: Breakfast, Lunch, Dinner,
+Snacks; Grocery, Shopping, Household, Utilities, Transport, Other), weekly and
+monthly views, Splitwise-style splitting, payment-message parsing, Excel reports,
+currency choice (US Dollar, Indian Rupee, Euro), and backup and restore to a
+folder you choose. All data stays on each user's own device.
