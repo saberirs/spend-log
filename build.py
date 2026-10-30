@@ -6,6 +6,8 @@ Usage:  python3 build.py [--hosts your-site.netlify.app,www.example.com] [--out 
 - Minifies the HTML and CSS
 - Obfuscates the app script and service worker
 - Optionally locks the app to the listed hostnames (domain lock)
+  For a listed *.netlify.app host, its Netlify test links (branch deploys such as
+  develop--your-site.netlify.app and deploy previews) are allowed too.
 - Adds LICENSE.txt and Netlify security headers (_headers)
 """
 import argparse, json, os, re, shutil, subprocess, sys, tempfile
@@ -32,7 +34,9 @@ code = app.group(1)
 lock = ""
 if hosts:
     lock = ("var __h=location.hostname.toLowerCase(),__ok=%s;"
-            "if(__ok.indexOf(__h)<0&&!/^(localhost|127\\.0\\.0\\.1)$/.test(__h)){"
+            "if(__ok.indexOf(__h)<0"
+            "&&!__ok.some(function(o){return /\\.netlify\\.app$/.test(o)&&__h.slice(-o.length-2)==='--'+o;})"
+            "&&!/^(localhost|127\\.0\\.0\\.1)$/.test(__h)){"
             "document.body.innerHTML='<div style=\"font:16px system-ui,sans-serif;padding:48px 24px;text-align:center;color:#162033\">"
             "<b style=\"font-size:20px\">This copy of Spend Log isn\\'t authorized.</b><p>Please use the official link.</p></div>';return;}"
             % json.dumps(hosts))
