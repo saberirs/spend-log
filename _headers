@@ -9,7 +9,7 @@
 # It now sends only the site address (https://spend-log-v1.netlify.app) to other sites, never the full page URL.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-H15GkzhZ5WVHZeVoStlhN2bH0mXWj77dVy1W8r9uNzY=' 'sha256-bJq5tO8J/GF8zfNFovJ9iyp9HCPGRNUweDlSxWdPbDY=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com; frame-src https://accounts.google.com/gsi/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-H15GkzhZ5WVHZeVoStlhN2bH0mXWj77dVy1W8r9uNzY=' 'sha256-0gzUJ76a/AgRpSn+nhApzHRrhZASdtgMhwvCi8Sa7ac=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com; frame-src https://accounts.google.com/gsi/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
