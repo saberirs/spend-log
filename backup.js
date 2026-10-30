@@ -1779,9 +1779,9 @@
     emptyBannerShown = true;
     showBanner('No entries on this device yet. Have a backup? Tap to restore it', restore);
   }
-  // Netlify test links (develop--…, deploy-preview-N--…) are for trying new features:
+  // Test links (spenderrr-staging, deploy-preview-N--…) are for trying new features:
   // no restore prompt and no automatic backups there.
-  var isTestLink = location.hostname.indexOf('--') > 0;
+  var isTestLink = location.hostname.indexOf('--') > 0 || location.hostname.indexOf('spenderrr-staging.') === 0;
   function check() {
     if (isTestLink) return;
     if (localRecords() === 0) { showEmptyBanner(); return; }
