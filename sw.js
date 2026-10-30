@@ -1,19 +1,20 @@
 /*
  * Spenderrr – offline support (service worker)
- * Version 2026.10.26
+ * Version 2026.10.27
  *
  * Network first: when online, every open gets the latest version from Netlify,
  * so Android, iPhone and desktop always run the same release.
  * When offline, it falls back to the last saved copy so the app still opens.
  * Google sign-in / Drive and other outside addresses are never touched.
  */
-var CACHE = 'spendlog-2026.10.26';
+var CACHE = 'spendlog-2026.10.27';
 var APP_FILES = [
   '/',
   '/index.html',
   '/backup.js',
   '/whatsapp.js',
   '/ledger.js',
+  '/reminders.js',
   '/fonts/plus-jakarta-sans-latin-400-normal.woff2',
   '/fonts/plus-jakarta-sans-latin-ext-400-normal.woff2',
   '/fonts/plus-jakarta-sans-latin-500-normal.woff2',
@@ -61,6 +62,7 @@ self.addEventListener('fetch', function (event) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;        // let Google, fonts etc. go straight through
   if (url.pathname.indexOf('/.netlify/') === 0) return;
+  if (url.pathname.indexOf('/t/') === 0) return;           // daily check-in: always the network, never saved
 
   var isPage = req.mode === 'navigate';
   // Each page under its own name (so opening privacy.html never replaces the app's offline copy); ignore ?v=…
