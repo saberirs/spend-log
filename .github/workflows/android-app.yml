@@ -45,7 +45,7 @@ jobs:
           python -m playwright install --with-deps chromium
           python testCase/test_native_app.py
 
-      - name: Website tests (must stay green: the website is unchanged)
+      - name: Website tests (must stay green, the website is unchanged)
         run: |
           python testCase/run_tests.py
           python testCase/test_reminders.py
