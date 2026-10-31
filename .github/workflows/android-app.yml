@@ -1,0 +1,61 @@
+name: Android app
+
+# Builds the Spenderrr phone app (debug APK) and runs the phone app tests.
+# Download the APK from the run's "Artifacts" section and install it on an Android phone.
+on:
+  push:
+    branches: [feature/offline-app]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install app tools
+        run: npm ci
+
+      - name: Make the app bundle (www/) and copy it into the Android project
+        run: |
+          python build_app.py
+          npx cap sync android
+
+      - name: Phone app tests (simulated phone, real app bundle)
+        run: |
+          pip install playwright openpyxl
+          python -m playwright install --with-deps chromium
+          python testCase/test_native_app.py
+
+      - name: Website tests (must stay green, the website is unchanged)
+        run: |
+          python testCase/run_tests.py
+          python testCase/test_reminders.py
+
+      - name: Build the debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spenderrr-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

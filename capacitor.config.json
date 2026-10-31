@@ -1,0 +1,17 @@
+{
+  "appId": "com.spenderrr.app",
+  "appName": "Spenderrr",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    },
+    "LocalNotifications": {
+      "iconColor": "#22356E"
+    }
+  }
+}
