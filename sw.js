@@ -1,13 +1,13 @@
 /*
  * Spenderrr – offline support (service worker)
- * Version 2026.10.27
+ * Version 2026.10.28
  *
  * Network first: when online, every open gets the latest version from Netlify,
  * so Android, iPhone and desktop always run the same release.
  * When offline, it falls back to the last saved copy so the app still opens.
  * Google sign-in / Drive and other outside addresses are never touched.
  */
-var CACHE = 'spendlog-2026.10.27';
+var CACHE = 'spendlog-2026.10.28';
 var APP_FILES = [
   '/',
   '/index.html',
