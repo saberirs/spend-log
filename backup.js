@@ -36,8 +36,9 @@
   var CONTACTS_KEY = 'spenderrr.contacts';      // WhatsApp numbers (whatsapp.js)
   var CREDITS_KEY = 'spenderrr.credits';        // money in (ledger.js)
   var CATS_KEY = 'spenderrr.categories';        // categories you created (ledger.js)
+  var BILLS_KEY = 'spenderrr.bills';            // bill reminders (reminders.js)
   // Only these are backed up, merged and restored; anything else in a file is ignored.
-  var ALLOWED_KEYS = ['spendlog.v1', CONTACTS_KEY, CREDITS_KEY, CATS_KEY];
+  var ALLOWED_KEYS = ['spendlog.v1', CONTACTS_KEY, CREDITS_KEY, CATS_KEY, BILLS_KEY];
   var CHANGE_DELAY = 3000;                      // wait this long after the last change, then back up
   var DB_NAME = 'spendlog-backup';
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -200,6 +201,26 @@
     return out;
   }
 
+  // Bill reminders (reminders.js): only the fields it uses, in the shape it expects.
+  var BILL_FREQ = ['monthly', 'bimonthly', 'quarterly', 'yearly'];
+  function validBill(x) {
+    return !!(x && typeof x === 'object' && typeof x.id === 'string' && /^b_[a-z0-9]{4,40}$/.test(x.id) && typeof x.name === 'string' &&
+      (x.day === -1 || (Number.isInteger(x.day) && x.day >= 1 && x.day <= 28)) && BILL_FREQ.indexOf(x.freq) >= 0);
+  }
+  function cleanBill(x) {
+    var amt = num(x.amount), month = num(x.month), remind = num(x.remind), paid = dict();
+    if (x.paid && typeof x.paid === 'object' && !Array.isArray(x.paid)) {
+      Object.keys(x.paid).slice(-24).forEach(function (k) { var t = num(x.paid[k]); if (/^\d{4}-\d{2}-\d{2}$/.test(k) && t !== null) paid[k] = t; });
+    }
+    return {
+      id: x.id, type: typeof x.type === 'string' && /^[a-z]{1,20}$/.test(x.type) ? x.type : 'other', name: cleanText(x.name, 30) || 'Bill',
+      cat: typeof x.cat === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(x.cat) ? x.cat : 'other', sub: cleanText(x.sub, 20),
+      amount: amt !== null && amt >= 0 && amt <= 1e9 ? Math.round(amt * 100) / 100 : null, freq: x.freq, day: x.day,
+      month: month !== null && month >= 0 && month <= 11 ? Math.floor(month) : 0, remind: [0, 1, 3, 7].indexOf(remind) >= 0 ? remind : 0,
+      paid: paid, createdAt: num(x.createdAt) === null ? 0 : num(x.createdAt)
+    };
+  }
+
   function sanitizeData(data) {
     var out = {};
     if (!data || typeof data !== 'object') return out;
@@ -219,6 +240,8 @@
       };
       out[CATS_KEY] = JSON.stringify({ debit: clean(cats.debit), credit: clean(cats.credit) });
     }
+    var bl = typeof data[BILLS_KEY] === 'string' && plainObject(data[BILLS_KEY]);
+    if (bl) out[BILLS_KEY] = JSON.stringify({ b: (Array.isArray(bl.b) ? bl.b : []).filter(validBill).slice(0, 100).map(cleanBill) });
     var ct = typeof data[CONTACTS_KEY] === 'string' && plainObject(data[CONTACTS_KEY]);
     if (ct) {
       var safe = {};
@@ -340,7 +363,7 @@
 
   // Stores that are merged item by item. The expenses keep their original names in the
   // sync record and deletion list; the others are prefixed ("spenderrr.credits|e").
-  var STORES = [DATA_KEY, CREDITS_KEY, CATS_KEY];
+  var STORES = [DATA_KEY, CREDITS_KEY, CATS_KEY, BILLS_KEY];
   function part(map, key) {
     var out = dict();
     Object.keys(map || {}).forEach(function (n) {
@@ -2124,7 +2147,27 @@
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) { /* ignore */ }
   }
 
+  // ---------- Daily check-in ----------
+  // Once a day the app asks the site for a tiny empty file, so the developer can count how many devices
+  // use Spenderrr (/t/active) and how many back up to Google Drive (/t/drive-active) in Netlify's logs.
+  // Nothing about you or your expenses is sent: no ids, no cookies, no query string.
+  var CHECKIN_KEY = 'spenderrr.checkin';
+  function dailyCheckIn() {
+    if (typeof fetch !== 'function' || (navigator && navigator.onLine === false)) return;
+    var d = new Date(), today = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(), last = null;
+    try { last = localStorage.getItem(CHECKIN_KEY); } catch (e) { return; }
+    if (last === today) return;
+    var ping = function (path) { return fetch(path, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' }); };
+    ping('/t/active').then(function (r) {
+      if (!r.ok) return;
+      try { localStorage.setItem(CHECKIN_KEY, today); } catch (e) { /* ignore */ }
+      if (driveOn()) ping('/t/drive-active').catch(function () { /* ignore */ });
+    }).catch(function () { /* offline: try again next time */ });
+  }
+
   function start() {
+    dailyCheckIn();
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) dailyCheckIn(); });
     watchChanges();
     askToKeepData();
     watchForUpdates();

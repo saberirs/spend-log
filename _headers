@@ -1,4 +1,4 @@
-# Netlify headers for Spenderrr (version 2026.10.27)
+# Netlify headers for Spenderrr (version 2026.10.28)
 # Scripts: only the app's own files, Google sign-in, and the two scripts inside index.html,
 # allowed by their exact fingerprint (sha256). If index.html's scripts change, run tests/update_script_hashes.py, then the tests:
 # they recompute these fingerprints and fail if this file is out of date.
@@ -24,3 +24,8 @@
 # Font files never change under the same name: let phones keep them for a year
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Daily check-in files: never cached, so each day's check-in reaches Netlify's logs
+/t/*
+  Cache-Control: no-store
+  Content-Type: text/plain; charset=utf-8
