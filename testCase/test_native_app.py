@@ -16,8 +16,10 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -496,6 +498,57 @@ def adding_an_expense_works_in_the_app(b, srv):
     p.reload()
     assert p.ev('SpendLogBackup.records()') == 1
     p.close()
+
+
+# ---- Protected (obfuscated) release build ----------------------------------
+@test
+def protected_build_obfuscates_the_code(b, srv):
+    """`build_app.py --protect` obfuscates the authored scripts; assets and index.html are untouched."""
+    out = tempfile.mkdtemp(prefix='spx-protected-')
+    try:
+        subprocess.run([sys.executable, os.path.join(APP_DIR, 'build_app.py'), '--protect', '--out', out],
+                       check=True, capture_output=True, text=True)
+        # Each authored script: no readable header comment, carries the obfuscator's _0x names.
+        for name in ['native.js', 'backup.js', 'ledger.js', 'reminders.js', 'whatsapp.js']:
+            code = open(os.path.join(out, name), encoding='utf-8').read()
+            assert not code.lstrip().startswith('/*'), name + ' still has its readable header'
+            assert '_0x' in code[:200], name + ' is not obfuscated'
+        # Some distinctive readable function names that must be gone.
+        assert 'function writeToFolder' not in open(os.path.join(out, 'backup.js'), encoding='utf-8').read()
+        assert 'function chooseBackupDir' not in open(os.path.join(out, 'native.js'), encoding='utf-8').read()
+        assert 'function dueAround' not in open(os.path.join(out, 'reminders.js'), encoding='utf-8').read()
+        # index.html (its main script is already obfuscated upstream) and the xlsx library: copied as-is.
+        assert open(os.path.join(out, 'index.html'), encoding='utf-8').read() == open(os.path.join(WWW, 'index.html'), encoding='utf-8').read()
+        assert open(os.path.join(out, 'xlsx.full.min.js'), encoding='utf-8').read() == read('xlsx.full.min.js')
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+@test
+def protected_build_still_runs_end_to_end(b, srv):
+    """The obfuscated bundle must work: backup to Documents and bill notifications both rely on the
+    cross-file globals (SpendLogBackup, SpenderrrReminders, SpenderrrNative) surviving obfuscation."""
+    out = tempfile.mkdtemp(prefix='spx-protected-run-')
+    try:
+        subprocess.run([sys.executable, os.path.join(APP_DIR, 'build_app.py'), '--protect', '--out', out],
+                       check=True, capture_output=True, text=True)
+        rel_srv = Server(out)
+        try:
+            p = Phone(b, rel_srv).open()
+            p.seed(3)
+            p.backup_now()
+            assert MONTH_FILE in p.files(), sorted(p.files())
+            assert records_in(p.text(MONTH_FILE)) == 3
+            add_bill(p, BILL)
+            p.reload()
+            p.page.wait_for_timeout(1500)
+            assert p.log('__scheduled'), 'bill notifications scheduled from obfuscated code'
+            assert p.log('__scheduled')[-1][0]['title'].endswith('bill due today')
+            p.close()
+        finally:
+            rel_srv.stop()
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
 
 
 # --------------------------------------------------------------------------

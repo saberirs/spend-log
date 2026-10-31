@@ -61,16 +61,24 @@ In Android Studio pick your phone (USB debugging on) or an emulator and press **
 
 ```bash
 pip install playwright openpyxl && python -m playwright install chromium   # once
-npm run app:test                      # phone app tests (18)
+npm run app:test                      # phone app tests (20)
 python3 testCase/run_tests.py         # website tests (74) — must stay green
 python3 testCase/test_reminders.py    # bill reminder tests (22)
 ```
 
+## Readable build vs protected build
+
+`build_app.py` has two modes:
+
+- **`npm run app:build`** (readable) — the authored scripts (`native.js`, `backup.js`, `ledger.js`, `reminders.js`, `whatsapp.js`) are copied as-is. Use this for day-to-day development and debugging. The tests run against this.
+- **`npm run app:build:protected`** (obfuscated) — those scripts are obfuscated with the same settings as the website build (`build.py`), so the JavaScript inside the APK can't be casually copied. **Use this for the Play Store release.** The app's main script in `index.html` is already obfuscated in the repo; `xlsx.full.min.js` (third-party) and the fonts are copied unchanged either way.
+
+Both modes keep every `window.*` name, so the obfuscated app behaves exactly like the readable one (two tests build the protected bundle and run it end to end to prove this). The obfuscator is the `javascript-obfuscator` dev dependency; `npm install` provides it.
+
 ## Updating the app
 
 1. Change the website files as usual and raise the version in `index.html` (`<meta name="app-version">`), `sw.js` etc.
-2. `npm run app:build` — copies the new files into the app and sets the Android version
-   (`2026.10.28` → versionName `2026.10.28`, versionCode `202610028`).
+2. `npm run app:build` (readable, for testing) or `npm run app:build:protected` (for a release) — copies the new files into the app and sets the Android version (`2026.10.28` → versionName `2026.10.28`, versionCode `202610028`).
 3. Build and test, then upload the new release to Google Play.
 
 The website and the app always run the same code; only `native.js` is app-specific.
@@ -83,8 +91,12 @@ The website and the app always run the same code; only `native.js` is app-specif
    keytool -genkey -v -keystore spenderrr-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias spenderrr
    ```
    Keep the `.jks` file **out of git** (store it like a password, e.g. in your password manager plus a USB drive).
-3. In Android Studio: **Build → Generate Signed App Bundle / APK → Android App Bundle**, choose the key, build `release`.
-   This gives `android/app/release/app-release.aab`.
+3. **Build the protected bundle first**, so the release has obfuscated code:
+   ```bash
+   npm run app:build:protected
+   ```
+   Then in Android Studio: **Build → Generate Signed App Bundle / APK → Android App Bundle**, choose the key, build `release`.
+   This gives `android/app/release/app-release.aab`. (`npm run app:apk:release` builds a signed-config release APK from the command line once signing is set up.)
 4. In [Google Play Console](https://play.google.com/console) (your personal developer account):
    - Create the app "Spenderrr", free.
    - **Privacy policy**: use the URL of `privacy.html` on your website (update it to mention the app; see below).

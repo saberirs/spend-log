@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make the phone app bundle (www/) from the website files.
 
-Usage:  python3 build_app.py            then  npx cap sync android
+Usage:  python3 build_app.py [--protect]      then  npx cap sync android
 
 The website files stay exactly as they are. The app bundle is a copy of them with:
   - native.js added as the first script (phone features: device-folder backups, share sheet,
@@ -10,20 +10,43 @@ The website files stay exactly as they are. The app bundle is a copy of them wit
     (Google blocks its web sign-in inside apps; device-folder backup and share sheet replace it)
   - no service worker, Netlify headers or daily check-in files (every file is inside the app)
 
+With --protect (use it for the Play Store release, not for day-to-day debugging):
+  - the authored scripts are obfuscated with the same settings the website build uses (build.py):
+    native.js, backup.js, ledger.js, reminders.js, whatsapp.js. The main app script inside
+    index.html is already obfuscated in the repo, so it is left as is; xlsx.full.min.js
+    (third-party, already minified) and the fonts are copied unchanged.
+  - Global names are kept (--rename-globals false) so the scripts still find each other at runtime
+    (SpendLogBackup, SpenderrrReminders, SpenderrrLedger, SpenderrrWhatsApp, SpenderrrNative).
+Plain builds stay readable so tests run against real code and debugging is easy.
+
 It also sets the Android app version from <meta name="app-version"> in index.html:
   versionName 2026.10.28  ->  versionCode 202610028   (YYYY*100000 + MM*1000 + N)
 """
-import os, re, shutil, sys
+import argparse, os, re, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "www")
 
-FILES = [
-    "index.html", "native.js", "backup.js", "whatsapp.js", "ledger.js", "reminders.js",
+# Authored scripts (our code) — obfuscated in a protected build.
+CODE_FILES = ["native.js", "backup.js", "whatsapp.js", "ledger.js", "reminders.js"]
+# Third-party / assets — always copied unchanged.
+ASSET_FILES = [
     "xlsx.full.min.js", "manifest.webmanifest", "privacy.html", "LICENSE.txt",
     "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
 ]
 NATIVE_TAG = '<script src="native.js"></script>'
+
+# Same obfuscation settings as the website build (build.py). --rename-globals false keeps the
+# cross-file globals (SpendLogBackup, SpenderrrReminders, SpenderrrNative, ...) working.
+OBF = ["--compact", "true", "--control-flow-flattening", "true", "--control-flow-flattening-threshold", "0.5",
+       "--string-array", "true", "--string-array-encoding", "base64", "--string-array-threshold", "0.8",
+       "--split-strings", "true", "--split-strings-chunk-length", "8", "--identifier-names-generator", "hexadecimal",
+       "--rename-globals", "false", "--self-defending", "true", "--numbers-to-expressions", "true",
+       "--transform-object-keys", "false", "--unicode-escape-sequence", "false", "--seed", "20261025"]
+
+_local = os.path.join(HERE, "node_modules", ".bin")
+TOOLS = os.environ.get("SPENDLOG_TOOLS") or _local
+_obf = os.path.join(TOOLS, "javascript-obfuscator" + (".cmd" if os.name == "nt" else ""))
 
 
 def read(name):
@@ -31,8 +54,17 @@ def read(name):
         return f.read()
 
 
+def obfuscate(js):
+    with tempfile.TemporaryDirectory() as d:
+        i, o = os.path.join(d, "in.js"), os.path.join(d, "out.js")
+        with open(i, "w", encoding="utf-8") as f:
+            f.write(js)
+        subprocess.run([_obf, i, "--output", o] + OBF, check=True, capture_output=True)
+        return open(o, encoding="utf-8").read()
+
+
 def app_html(html):
-    """index.html for the app: native.js first, no Google Drive client id."""
+    """index.html for the app: native.js first, no Google Drive client id (same in both modes)."""
     m = re.search(r'<meta charset="utf-8">', html, re.I)
     if not m:
         sys.exit("build_app.py: <meta charset=\"utf-8\"> not found in index.html")
@@ -67,20 +99,43 @@ def set_android_version(name, code):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--protect", action="store_true",
+                    help="obfuscate the authored scripts (for the Play Store release)")
+    ap.add_argument("--out", default=OUT,
+                    help="output folder for the bundle (default: www/; npx cap sync expects www/)")
+    args = ap.parse_args()
+
+    if args.protect and not os.path.exists(_obf):
+        sys.exit("build_app.py --protect needs javascript-obfuscator. Run `npm install` first (dev dependency).")
+
+    out_dir = os.path.abspath(args.out)
     html = read("index.html")
-    if os.path.exists(OUT):
-        shutil.rmtree(OUT)
-    os.makedirs(OUT)
-    for name in FILES:
-        if name == "index.html":
-            continue
-        shutil.copy(os.path.join(HERE, name), OUT)
-    shutil.copytree(os.path.join(HERE, "fonts"), os.path.join(OUT, "fonts"))
-    with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as f:
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
+
+    for name in ASSET_FILES:
+        shutil.copy(os.path.join(HERE, name), out_dir)
+    shutil.copytree(os.path.join(HERE, "fonts"), os.path.join(out_dir, "fonts"))
+    for name in CODE_FILES:
+        out = os.path.join(out_dir, name)
+        if args.protect:
+            with open(out, "w", encoding="utf-8") as f:
+                f.write(obfuscate(read(name)))
+        else:
+            shutil.copy(os.path.join(HERE, name), out)
+    with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(app_html(html))
+
     name, code = app_version(html)
-    android = set_android_version(name, code)
-    print("Built www/ for the app | version %s (code %d)%s" % (name, code, " | Android version set" if android else ""))
+    # The Android version only tracks the real bundle in www/, not a one-off --out build.
+    is_www = os.path.normcase(out_dir) == os.path.normcase(os.path.abspath(OUT))
+    android = set_android_version(name, code) if is_www else False
+    print("Built %s for the app | version %s (code %d) | scripts %s%s" % (
+        os.path.relpath(out_dir, HERE), name, code,
+        "protected (obfuscated)" if args.protect else "readable (debug)",
+        " | Android version set" if android else ""))
 
 
 if __name__ == "__main__":
