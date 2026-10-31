@@ -8,8 +8,10 @@
     "build": "python3 build.py --hosts spend-log-v1.netlify.app",
     "serve": "python3 -m http.server 8080",
     "app:build": "python3 build_app.py && npx cap sync android",
+    "app:build:protected": "python3 build_app.py --protect && npx cap sync android",
     "app:open": "npx cap open android",
     "app:apk": "python3 build_app.py && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "app:apk:release": "python3 build_app.py --protect && npx cap sync android && cd android && ./gradlew assembleRelease",
     "app:test": "python3 testCase/test_native_app.py",
     "app:icons": "python3 tools/android_assets.py"
   },
