@@ -476,6 +476,43 @@ def release_version_is_the_same_everywhere(b, srv):
 
 
 @test
+def release_title_check_puts_version_in_netlify_deploy_name(b, srv):
+    """Netlify names a production deploy after the merge commit (the PR title into develop).
+    The Release title check must exist, run on PRs into develop (also when the title is edited),
+    and pass only when the title has the version from index.html."""
+    path = os.path.join('.github', 'workflows', 'pr-title-version.yml')
+    assert os.path.exists(os.path.join(APP_DIR, path)), path + ' is missing: the version would not show in the Netlify dashboard'
+    wf = read(path)
+    assert re.search(r'pull_request:\s*\n\s*branches:\s*\[\s*develop\s*\]', wf), 'Check must run on pull requests into develop'
+    for kind in ('opened', 'edited', 'reopened', 'synchronize'):
+        assert kind in wf, 'Check must also run when a pull request is ' + kind
+    assert 'TITLE: ${{ github.event.pull_request.title }}' in wf, 'Title must reach the script through an env var, not pasted into it'
+
+    m = re.search(r'run: \|\n((?:          .*\n?|\s*\n)+)', wf)
+    assert m, 'Could not find the check script in ' + path
+    script = '\n'.join(line[10:] for line in m.group(1).splitlines())
+    v = re.search(r'name="app-version" content="([^"]+)"', read('index.html')).group(1)
+    y, mo, n = v.split('.')
+    older = '%s.%s.%d' % (y, mo, int(n) - 1) if int(n) > 1 else '2000.1.1'
+
+    def run(title):
+        import subprocess
+        env = dict(os.environ, TITLE=title)
+        r = subprocess.run(['bash', '-c', script], cwd=APP_DIR, env=env, capture_output=True, text=True)
+        return r.returncode, r.stdout + r.stderr
+
+    code, out = run('Release %s: what changed' % v)
+    assert code == 0, 'Title with the version must pass:\n' + out
+    code, out = run('Merge pull request #12: merge develop into main after each deploy')
+    assert code != 0 and ('Release ' + v) in out, 'Title without a version must fail and say what to write:\n' + out
+    code, out = run('Release %s: forgot to raise the title' % older)
+    assert code != 0, 'Title with an older version (%s) must fail:\n%s' % (older, out)
+    code, out = run('Release $(echo %s).%s.%s: sneaky' % (y, mo, n))   # only matches if the title were run
+    assert code != 0, 'Title text must never be run as a command:\n' + out
+    assert 'Release title check' in read(os.path.join('docs', 'RELEASE.md')), 'RELEASE.md should explain the title rule'
+
+
+@test
 def app_name_is_spenderrr_everywhere(b, srv):
     man = json.loads(read('manifest.webmanifest'))
     assert man['name'] == EXPECTED_NAME and man['short_name'] == EXPECTED_NAME
