@@ -1,0 +1,44 @@
+# Release title check
+#
+# Netlify names each production deploy after the merge commit, which is the pull request title.
+# So a pull request into develop (production) must have the app version in its title,
+# for example "Release 2026.10.30: confirm before switching Google Drive account".
+# The version is read from <meta name="app-version"> in index.html on the pull request's branch.
+# Edit the title and this check runs again by itself.
+name: Release title check
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  title-has-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: index.html
+          sparse-checkout-cone-mode: false
+
+      - name: Pull request title must contain the app version
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          VERSION=$(grep -o 'name="app-version" content="[^"]*"' index.html | head -1 | sed 's/.*content="\([^"]*\)"/\1/')
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not find <meta name=\"app-version\"> in index.html"
+            exit 1
+          fi
+          echo "App version: $VERSION"
+          echo "PR title:    $TITLE"
+          case "$TITLE" in
+            *"$VERSION"*) echo "OK: the Netlify deploy will be labelled with $VERSION." ;;
+            *)
+              echo "::error::Add the version to the pull request title, e.g. \"Release $VERSION: <what changed>\". Netlify uses this title as the deploy name."
+              exit 1 ;;
+          esac
