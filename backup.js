@@ -1751,7 +1751,9 @@
           reject(e);
         }
       });
-      tokenClient.requestAccessToken({ prompt: getMeta().driveConsented ? '' : 'consent' });
+      var prompt = getMeta().driveConsented ? (pickAccount ? 'select_account' : '') : 'consent';
+      pickAccount = false;
+      tokenClient.requestAccessToken({ prompt: prompt });
     });
   }
 
@@ -1913,6 +1915,40 @@
   // no extra sign-in screen. Saved only on this device (not in backups).
   var accountCheckedFor = null;
   var switchNotice = '';           // shown with the next backup message so it isn't missed
+  var pendingSwitch = null;        // { before, acct } while a different account waits for a yes
+  var pickAccount = false;         // after a "no", the next sign-in shows Google's account chooser
+
+  // Returns true when it's fine to use the signed-in account's Drive.
+  // Same account as before (or first connect): true, no question.
+  // Different account: asks; "no" signs that account out and keeps the old one.
+  function confirmAccountSwitch(action) {
+    if (!pendingSwitch) return true;
+    var p = pendingSwitch;
+    pendingSwitch = null;
+    var ok = confirm('You are signed in to Google as ' + accountLabel(p.acct) + '.\n' +
+      'This device was using ' + p.before.email + ' for Google Drive.\n\n' +
+      (action === 'restore'
+        ? 'Look for backups in ' + p.acct.email + '\'s Google Drive?'
+        : 'Back up the expenses on this device to ' + p.acct.email + '\'s Google Drive?') +
+      '\n\nCancel keeps ' + p.before.email + ' — you can choose the right account next time.');
+    if (ok) {
+      var m = getMeta(); m.driveAccount = p.acct; setMeta(m);
+      switchNotice = 'Google Drive is now ' + accountLabel(p.acct) + ' (was ' + p.before.email + ')';
+      renderDriveButtons();
+      refreshStatus();
+      return true;
+    }
+    try { if (driveToken && window.google) google.accounts.oauth2.revoke(driveToken, function () {}); } catch (e) { /* ignore */ }
+    driveToken = null; driveTokenExp = 0; accountCheckedFor = null; pickAccount = true;
+    try { sessionStorage.removeItem('__spendlog_drive_tok'); } catch (e) { /* ignore */ }
+    return false;
+  }
+  function switchDeclined(before) {
+    var e = new Error('Nothing sent to the other Google account. Google Drive stays ' + (before || 'as it was') + '.');
+    e.name = 'SwitchDeclined';
+    return e;
+  }
+
   async function driveAccount() {
     if (accountCheckedFor && accountCheckedFor === driveToken) return getMeta().driveAccount || null;
     try {
@@ -1921,12 +1957,15 @@
       var acct = { name: String(u.displayName || '').trim(), email: String(u.emailAddress || '').trim() };
       if (!acct.name && !acct.email) return getMeta().driveAccount || null;
       var m = getMeta(), before = m.driveAccount;
-      m.driveAccount = acct; setMeta(m);
       accountCheckedFor = driveToken;
       if (before && before.email && acct.email && before.email.toLowerCase() !== acct.email.toLowerCase()) {
-        switchNotice = 'Google Drive is now ' + accountLabel(acct) + ' (was ' + before.email + ')';
-        toast(switchNotice);
+        // A different Google account signed in (shared phone, wrong account picked).
+        // Don't save it yet: confirmAccountSwitch() asks before this device's data goes to that Drive.
+        pendingSwitch = { before: before, acct: acct };
+        return acct;
       }
+      pendingSwitch = null;
+      m.driveAccount = acct; setMeta(m);
       renderDriveButtons();
       refreshStatus();
       return acct;
@@ -1946,7 +1985,7 @@
       await getDriveToken();
       var m = getMeta(); m.drive = true; m.driveConsented = true; setMeta(m);
       var acct = await driveAccount();
-      toast(acct ? 'Google Drive connected: ' + (acct.email || acct.name) : 'Google Drive connected');
+      if (!pendingSwitch) toast(acct ? 'Google Drive connected: ' + (acct.email || acct.name) : 'Google Drive connected');
       refreshStatus();
       renderDriveButtons();
       await runBackup(true);
@@ -2017,6 +2056,8 @@
         } else {
           await getDriveToken();
           await driveAccount();
+          var keep = (getMeta().driveAccount || {}).email;
+          if (!confirmAccountSwitch('backup')) throw switchDeclined(keep);
           var dm = await driveSave(data, tap);
           if (dm) {
             var da = getMeta().driveAccount;
@@ -2055,6 +2096,12 @@
       refreshStatus();
     } catch (e) {
       if (e && e.name === 'AbortError') return;
+      if (e && e.name === 'SwitchDeclined') {
+        toast(e.message);
+        showBanner('Tap to back up to Google Drive and choose your account', function () { runBackup('tap'); });
+        refreshStatus();
+        return;
+      }
       console.error('Backup failed', e);
       if (!change) {
         toast('Backup failed: ' + (e && e.message ? e.message : e));
@@ -2193,6 +2240,8 @@
     if (kind === 'drive') {
       await getDriveToken();
       await driveAccount();
+      var keep = (getMeta().driveAccount || {}).email;
+      if (!confirmAccountSwitch('restore')) throw switchDeclined(keep);
       return listDriveBackups();
     }
     var h = await loadHandle();
@@ -2227,7 +2276,7 @@
         list.appendChild(btn);
       });
     } catch (e) {
-      list.textContent = e && e.name === 'AbortError' ? '' : 'Could not look for backups: ' + (e && e.message ? e.message : e);
+      list.textContent = e && e.name === 'AbortError' ? '' : e && e.name === 'SwitchDeclined' ? e.message : 'Could not look for backups: ' + (e && e.message ? e.message : e);
     }
   }
 

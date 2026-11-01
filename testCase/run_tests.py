@@ -1588,7 +1588,10 @@ def drive_account_switch_and_lookup_problems(b, srv):
     drive.account = {'displayName': 'Saberi Work', 'emailAddress': 'saberi.work@example.com'}
     d.ev('sessionStorage.clear()')
     d.reload()
-    d.backup_now()                                      # signs in again, with the other account
+    d.dialogs.clear()
+    d.backup_now()                                      # signs in again, with the other account; answers OK
+    assert d.dialogs and 'saberi.work@example.com' in d.dialogs[-1] and 'saberi.test@gmail.com' in d.dialogs[-1], \
+        'A different Google account must be confirmed first: %s' % d.dialogs
     assert 'now Saberi Work (saberi.work@example.com)' in d.page.inner_text('#slb-toast'), d.page.inner_text('#slb-toast')
     assert 'was saberi.test@gmail.com' in d.page.inner_text('#slb-toast')
     d.page.click('#slb-fab')
@@ -1607,6 +1610,41 @@ def drive_account_switch_and_lookup_problems(b, srv):
     connect_drive(f)
     assert 'Only Name' in account_card(f) and 'Google Drive (Only Name)' in f.page.inner_text('#slb-status')
     f.close()
+
+
+@test
+def drive_other_account_needs_a_yes(b, srv):
+    """Shared phone: someone else signs in to Google. Nothing of this phone goes to their Drive
+    unless they say yes; the same account as before is never asked."""
+    drive = FakeDrive()
+    d = Device(b, srv, kind='iphone', clock=OCT_EVENING, drive=drive).open()
+    d.seed(3)
+    connect_drive(d)
+    first_calls = len(drive.calls)
+    d.dialogs.clear()
+    d.ev('sessionStorage.clear()'); d.reload()
+    d.backup_now()                                      # same account again
+    assert not d.dialogs, 'Same Google account must not be asked: %s' % d.dialogs
+    assert len(drive.calls) > first_calls
+    d.close()
+
+    mine, theirs = FakeDrive(), FakeDrive({'displayName': 'Guest', 'emailAddress': 'guest@example.com'})
+    e = Device(b, srv, kind='iphone', clock=OCT_EVENING, drive=mine).open()
+    e.seed(4)
+    connect_drive(e)
+    assert records_in(mine.tree()[MONTH_FILE]) == 4
+    e.drive.account = theirs.account                    # the other person's Google account signs in
+    e.drive.files = {}                                   # ...and it's their (empty) Drive
+    e.ev('sessionStorage.clear()'); e.reload()
+    e.dialogs.clear(); e.answers = [False]               # they tap Cancel
+    e.backup_now()
+    assert e.dialogs and 'guest@example.com' in e.dialogs[-1], e.dialogs
+    assert MONTH_FILE not in e.drive.tree(), 'Nothing may be written to the other account after Cancel'
+    assert 'Nothing sent to the other Google account' in e.page.inner_text('#slb-toast'), e.page.inner_text('#slb-toast')
+    assert (e.meta().get('driveAccount') or {}).get('email') == TEST_ACCOUNT['emailAddress'], e.meta().get('driveAccount')
+    assert e.meta().get('drive'), 'Drive backup stays on for the original account'
+    assert not e.errors, e.errors
+    e.close()
 
 
 # ---- Send on WhatsApp ------------------------------------------------------
