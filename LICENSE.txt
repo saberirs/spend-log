@@ -1,5 +1,8 @@
-Daily Spend Log
-Copyright (c) 2026 Saberi. All rights reserved.
+Spenderrr
+Copyright (c) 2026 Saberi RS. All rights reserved.
+
+The source code is published so that it can be read and reviewed (for example,
+by employers). Publishing it does not grant any licence to use it.
 
 You may use this app through its published link for personal expense tracking.
 
@@ -8,4 +11,5 @@ works from this app's source code, design, or assets, in whole or in part,
 without written permission from the copyright holder.
 
 The bundled SheetJS library (xlsx.full.min.js) is licensed separately under
-the Apache License 2.0 by SheetJS LLC.
+the Apache License 2.0 by SheetJS LLC. The bundled Plus Jakarta Sans font files
+are licensed separately under the SIL Open Font License 1.1.
