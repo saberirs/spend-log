@@ -7,6 +7,7 @@
 | `feature/*`, `fix/*`, `docs/*` | One change each, opened as a pull request |
 | `staging` | Test link on Netlify — try a change on real phones before release |
 | `develop` | **Production** — every merge deploys https://spend-log-v1.netlify.app |
+| `main` | Same as `develop`, updated automatically after each deploy (the branch GitHub shows first) |
 | `backup/develop-YYYY-MM-DD` | The production version from just before a deploy (made automatically) |
 
 ## Version
@@ -29,13 +30,14 @@ fingerprints: `python3 tests/update_script_hashes.py`.
 2. Run every test suite (see the README) — all must pass.
 3. Open a pull request into `staging`, check it on the test link on Android, iPhone and desktop.
 4. Merge into `develop`; Netlify deploys it. Phones pick it up the next time the app opens online.
+5. `main` is updated from `develop` automatically (see below) — never commit to `main` directly.
 
 ## Automatic backups and clean-up
 
 `.github/workflows/release-backups.yml` runs on GitHub:
 
 - **Every deploy** (push to `develop`): the version that was live just before is saved as
-  `backup/develop-YYYY-MM-DD`.
+  `backup/develop-YYYY-MM-DD`, then `develop` is merged into `main`, so `main` always matches production.
 - **Going back fast:** in Netlify, open the spend-log-v1 project → **Deploys**, pick the previous deploy and
   choose **Publish deploy** (live in seconds). Then fix forward, or revert the release's merge commit on a new
   branch (`git revert -m 1 <merge sha>`) and merge it into `develop`; the backup branch shows exactly what was live.

@@ -1,8 +1,9 @@
 # Release backups and branch clean-up
 #
 # On every deploy (a push to develop, which Netlify publishes as production):
-#   saves the version that was live just before as backup/develop-YYYY-MM-DD
-#   (US Eastern date; the first deploy of a day keeps that day's backup).
+#   1. saves the version that was live just before as backup/develop-YYYY-MM-DD
+#      (US Eastern date; the first deploy of a day keeps that day's backup);
+#   2. then merges develop into main, so main always matches production.
 #
 # Every day:
 #   - deletes backup/* branches older than 2 days, but always keeps the newest
@@ -10,7 +11,7 @@
 #   - deletes finished branches (feature/*, fix/*, docs/*, chore/*, release/*, sync/*)
 #     whose every commit is already in develop (or main) and whose last commit is over 2 days old.
 #
-# It never touches develop, staging, main, or a branch with work that is not in develop.
+# Clean-up never deletes develop, staging, main, or a branch with work that is not in develop.
 # Run it by hand from the Actions tab (Release backups -> Run workflow).
 name: Release backups
 
@@ -48,6 +49,24 @@ jobs:
               await github.rest.git.createRef({ owner, repo, ref: `refs/heads/${name}`, sha: context.payload.before });
               core.info(`Saved ${context.payload.before.slice(0, 7)} as ${name}.`);
             }
+
+  sync-main:
+    # After the backup: merge develop into main, so main (the branch visitors see first) matches production.
+    needs: backup
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge develop into main
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const r = await github.rest.repos.merge({
+              owner, repo, base: 'main', head: context.sha,
+              commit_message: `Merge develop (${context.sha.slice(0, 7)}) into main after deploy`
+            });
+            if (r.status === 204) core.info('main already has this version.');
+            else core.info(`main updated: ${r.data.sha.slice(0, 7)}.`);
 
   cleanup:
     if: github.event_name != 'push'
