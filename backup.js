@@ -37,8 +37,12 @@
   var CREDITS_KEY = 'spenderrr.credits';        // money in (ledger.js)
   var CATS_KEY = 'spenderrr.categories';        // categories you created (ledger.js)
   var BILLS_KEY = 'spenderrr.bills';            // bill reminders (reminders.js)
+  var PAY_KEY = 'spenderrr.paymodes';           // payment mode of each expense (ledger.js)
   // Only these are backed up, merged and restored; anything else in a file is ignored.
-  var ALLOWED_KEYS = ['spendlog.v1', CONTACTS_KEY, CREDITS_KEY, CATS_KEY, BILLS_KEY];
+  var ALLOWED_KEYS = ['spendlog.v1', CONTACTS_KEY, CREDITS_KEY, CATS_KEY, BILLS_KEY, PAY_KEY];
+  var PAY_OUT = [['credit_card', 'Credit card'], ['upi', 'UPI'], ['cash', 'Cash'], ['food_card', 'Food card / Sodexo']];
+  var PAY_IN = [['cash', 'Cash'], ['debit', 'Debit card / Account']];
+  function payLabel(side, v) { var p = (side === 'in' ? PAY_IN : PAY_OUT).filter(function (x) { return x[0] === v; })[0]; return p ? p[1] : ''; }
   var CHANGE_DELAY = 3000;                      // wait this long after the last change, then back up
   var DB_NAME = 'spendlog-backup';
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -229,9 +233,17 @@
     var cr = typeof data[CREDITS_KEY] === 'string' && plainObject(data[CREDITS_KEY]);
     if (cr) {
       out[CREDITS_KEY] = JSON.stringify({ e: (Array.isArray(cr.e) ? cr.e : []).filter(validCredit).map(function (x) {
-        return { id: x.id, amount: Math.round(Number(x.amount) * 100) / 100, cat: x.cat, note: cleanText(x.note, 120), ts: Number(x.ts),
+        var c = { id: x.id, amount: Math.round(Number(x.amount) * 100) / 100, cat: x.cat, note: cleanText(x.note, 120), ts: Number(x.ts),
           createdAt: isFinite(Number(x.createdAt)) ? Number(x.createdAt) : Number(x.ts) };
+        if (payLabel('in', x.pay)) c.pay = x.pay;
+        return c;
       }) });
+    }
+    var pm = typeof data[PAY_KEY] === 'string' && plainObject(data[PAY_KEY]);
+    if (pm) {
+      out[PAY_KEY] = JSON.stringify({ e: (Array.isArray(pm.e) ? pm.e : []).filter(function (x) {
+        return x && okId(x.id) && payLabel('out', x.pay);
+      }).slice(0, MAX_ITEMS).map(function (x) { return { id: String(x.id), pay: x.pay }; }) });
     }
     var cats = typeof data[CATS_KEY] === 'string' && plainObject(data[CATS_KEY]);
     if (cats) {
@@ -363,7 +375,7 @@
 
   // Stores that are merged item by item. The expenses keep their original names in the
   // sync record and deletion list; the others are prefixed ("spenderrr.credits|e").
-  var STORES = [DATA_KEY, CREDITS_KEY, CATS_KEY, BILLS_KEY];
+  var STORES = [DATA_KEY, CREDITS_KEY, CATS_KEY, BILLS_KEY, PAY_KEY];
   function part(map, key) {
     var out = dict();
     Object.keys(map || {}).forEach(function (n) {
@@ -977,6 +989,9 @@
     var per = reportPeriod(k, now, opts);
     if (!per) throw new Error('Pick a From date on or before the To date');
     var everything = reportEntries(data);
+    var payOf = {};          // expense id -> payment mode
+    (parseStore(data[PAY_KEY]).e || []).forEach(function (x) { if (x && payLabel('out', x.pay)) payOf[String(x.id)] = x.pay; });
+    function payText(x, side) { return side === 'in' ? payLabel('in', x.pay) : payLabel('out', payOf[String(x.id)]); }
 
     function colorOf(id, side) {
       if (side === 'in') {
@@ -1061,12 +1076,12 @@
       // The label goes in F, the first cell of the F–H merge (a value in G or H would be hidden by Excel).
       var r = row([BLANK, [heading, st({ font: { b: 1, color: NAVY, size: 22 } })], BLANK, BLANK, BLANK,
         ['Spenderrr · ' + tabLabel, st({ font: { i: 1, color: GREY, size: 11 }, align: 'right' })]], 34);
-      mergeRow('B', 'E', r); mergeRow('F', 'H', r);
+      mergeRow('B', 'E', r); mergeRow('F', 'I', r);
       r = row([BLANK, [localDate(from) + ' to ' + localDate(to) + '  ·  made ' + localDate(now.getTime()) + ' ' + localTime(now.getTime()),
-        st({ font: { i: 1, color: GREY, size: 10 }, border: { bottom: ['medium', NAVY] } })]].concat(['C', 'D', 'E', 'F', 'G', 'H'].map(function () {
+        st({ font: { i: 1, color: GREY, size: 10 }, border: { bottom: ['medium', NAVY] } })]].concat(['C', 'D', 'E', 'F', 'G', 'H', 'I'].map(function () {
         return ['', st({ border: { bottom: ['medium', NAVY] } })];
       })), 20);
-      mergeRow('B', 'H', r);
+      mergeRow('B', 'I', r);
       row([], 10);
 
       // Cards
@@ -1139,6 +1154,29 @@
         }, height: 22 });
       });
       if (all.length) {
+        // By payment mode: money out and money in for each mode used (and "Not set" for entries without one).
+        var modes = {}, order = [];
+        all.forEach(function (rw) {
+          var name = payText(rw.x, rw.side) || 'Not set';
+          if (!modes[name]) { modes[name] = { out: 0, inn: 0 }; order.push(name); }
+          if (rw.side === 'out') modes[name].out += shareOf(rw.x); else modes[name].inn += Number(rw.x.amount);
+        });
+        var rank = PAY_OUT.concat(PAY_IN).map(function (p2) { return p2[1]; });
+        order.sort(function (a, b) {
+          var ra = a === 'Not set' ? 99 : rank.indexOf(a), rb = b === 'Not set' ? 99 : rank.indexOf(b);
+          return ra - rb;
+        });
+        right.push({ cells: {}, height: 10 });
+        right.push(head('BY PAYMENT MODE', NAVY, 'F', 'H'));
+        right.push({ cells: {
+          F: ['Payment mode', st({ font: { color: GREY, size: 10 } })],
+          G: ['Out', st({ font: { color: GREY, size: 10 }, align: 'right' })], H: ['In', st({ font: { color: GREY, size: 10 }, align: 'right' })] } });
+        order.forEach(function (name) {
+          right.push({ cells: {
+            F: [name, st({ font: { size: 12, i: name === 'Not set' ? 1 : 0, color: name === 'Not set' ? GREY : INK } })],
+            G: [modes[name].out ? money(modes[name].out) : '', st({ font: { color: RED, size: 12 }, fmt: MONEY, align: 'right' })],
+            H: [modes[name].inn ? money(modes[name].inn) : '', st({ font: { color: GREEN, size: 12 }, fmt: MONEY, align: 'right' })] }, height: 20 });
+        });
         right.push({ cells: {}, height: 10 });
         right.push(head('WEEK BY WEEK', NAVY, 'F', 'H'));
         right.push({ cells: {
@@ -1167,16 +1205,16 @@
       row([], 16);
 
       // All entries
-      var hr = row([BLANK].concat(['ALL ENTRIES', '', '', '', '', '', ''].map(function (t) {
+      var hr = row([BLANK].concat(['ALL ENTRIES', '', '', '', '', '', '', ''].map(function (t) {
         return [t, st({ font: { b: 1, color: NAVY, size: 13 }, border: { bottom: ['medium', NAVY] } })];
       })), 24);
-      mergeRow('B', 'H', hr);
+      mergeRow('B', 'I', hr);
       var headStyle = function (align) { return st({ font: { b: 1, color: GREY, size: 10 }, align: align, border: { bottom: ['thin', NAVY] } }); };
       var headerRow = row([['', headStyle()], ['Date and time', headStyle()], ['Category', headStyle()], ['Note', headStyle()], ['Money out', headStyle('right')],
-        ['Split', headStyle()], ['Money in', headStyle('right')], ['Balance', headStyle('right')]], 20);
+        ['Split', headStyle()], ['Money in', headStyle('right')], ['Balance', headStyle('right')], ['Payment mode', headStyle()]], 20);
       var running = 0;
       var line = { bottom: ['thin', ROWLINE] };
-      if (!all.length) { var er = row([BLANK, ['No entries in this period', st({ font: { i: 1, color: GREY } })]]); mergeRow('B', 'H', er); }
+      if (!all.length) { var er = row([BLANK, ['No entries in this period', st({ font: { i: 1, color: GREY } })]]); mergeRow('B', 'I', er); }
       all.forEach(function (rw) {
         var x = rw.x, side = rw.side, id = catId(x, side), hex = colorOf(id, side);
         var out = side === 'out' ? money(shareOf(x)) : '', inn = side === 'in' ? money(x.amount) : '';
@@ -1189,7 +1227,8 @@
           [out, st({ font: { size: 12 }, fmt: MONEY, align: 'right', border: line })],
           [side === 'out' ? splitText(x) : '', st({ font: { color: GREY, size: 10 }, border: line, wrap: 1 })],
           [inn, st({ font: { color: GREEN, size: 12 }, fmt: MONEY, align: 'right', border: line })],
-          [running, st({ font: { b: 1, color: running < 0 ? RED : INK, size: 12 }, fmt: MONEY, align: 'right', border: line })]
+          [running, st({ font: { b: 1, color: running < 0 ? RED : INK, size: 12 }, fmt: MONEY, align: 'right', border: line })],
+          [payText(x, side), st({ font: { size: 12 }, border: line })]
         ], (splitText(x).length > 46 || String(x.note || '').length > 26) ? 34 : 22);
       });
       var lastEntry = rows.length;
@@ -1197,12 +1236,12 @@
       var tr = row([BLANK, ['Total', st({ font: { b: 1, size: 12 }, border: tot })], ['', st({ border: tot })], ['', st({ border: tot })],
         [totalOut, st({ font: { b: 1, color: RED, size: 12 }, fmt: MONEY, align: 'right', border: tot })], ['', st({ border: tot })],
         [totalIn, st({ font: { b: 1, color: GREEN, size: 12 }, fmt: MONEY, align: 'right', border: tot })],
-        [bal, st({ font: { b: 1, color: bal < 0 ? RED : NAVY, size: 12 }, fmt: MONEY, align: 'right', border: tot })]], 24);
+        [bal, st({ font: { b: 1, color: bal < 0 ? RED : NAVY, size: 12 }, fmt: MONEY, align: 'right', border: tot })], ['', st({ border: tot })]], 24);
       mergeRow('B', 'D', tr);
 
       // ---- Write the sheet ----
-      var widths = [1.6, 24, 15, 24, 14, 40, 15, 15];
-      var filterRef = 'B' + headerRow + ':H' + Math.max(headerRow, lastEntry);
+      var widths = [1.6, 24, 15, 24, 14, 40, 15, 15, 20];
+      var filterRef = 'B' + headerRow + ':I' + Math.max(headerRow, lastEntry);
       var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
         '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0" showGridLines="0"' + (sheets.length ? '' : ' tabSelected="1"') + '/></sheetViews>' +
@@ -1253,7 +1292,7 @@
       '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
     var defined = '<definedNames>' + sheets.map(function (s, i) {
       var ref = "'" + s.name + "'!";
-      return (s.hasEntries ? '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">' + ref + '$B$' + s.headerRow + ':$H$' + Math.max(s.headerRow, s.lastEntry) + '</definedName>' : '') +
+      return (s.hasEntries ? '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">' + ref + '$B$' + s.headerRow + ':$I$' + Math.max(s.headerRow, s.lastEntry) + '</definedName>' : '') +
         '<definedName name="_xlnm.Print_Titles" localSheetId="' + i + '">' + ref + '$' + s.headerRow + ':$' + s.headerRow + '</definedName>';
     }).join('') + '</definedNames>';
     var WS = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml';

@@ -4,7 +4,7 @@ Spenderrr – make sample Excel reports for every period (for checking the layou
 ======================================================================================
 
 Fills a test browser with about 18 months of made-up entries (April 2025 – October 2026,
-with no entries at all in February 2026), then saves one report per period:
+with no entries at all in February 2026, and a payment mode on most entries), then saves one report per period:
   INR: this week, this month, last month, last 3 months, last 6 months,
        financial year 2026-27, last financial year 2025-26, custom dates, all entries
   USD: year 2026, last year 2025, last 3 months
@@ -37,9 +37,13 @@ ITEMS = [  # (category, note, low, high, times a month)
 ]
 
 
+PAY_BY_CAT = {'breakfast': 'food_card', 'lunch': 'food_card', 'snacks': 'cash', 'dinner': 'credit_card', 'grocery': 'upi',
+              'shopping': 'credit_card', 'household': 'upi', 'utilities': 'upi', 'transport': 'upi', 'fuel': 'credit_card', 'maid': 'cash'}
+
+
 def make_data():
     rnd = random.Random(7)
-    entries, credits, n = [], [], 0
+    entries, credits, n, modes = [], [], 0, []
     month = datetime(2025, 4, 1)
     while month <= NOW:
         if not (month.year == 2026 and month.month == 2):        # February 2026: nothing, so it gets no tab
@@ -56,22 +60,24 @@ def make_data():
                         e['note'] = 'Dinner with Ravi'
                         e['split'] = {'paidBy': 'Me', 'parts': [{'name': 'Me', 'amt': amt / 2}, {'name': 'Ravi', 'amt': amt / 2}], 'my': amt / 2}
                     entries.append(e)
+                    if cat in PAY_BY_CAT:              # LPG left without a mode, to show "Not set"
+                        modes.append({'id': e['id'], 'pay': PAY_BY_CAT[cat]})
                     n += 1
             pay = month.replace(day=1, hour=9)
             if pay <= NOW:
                 credits.append({'id': 'pay%d' % len(credits), 'amount': 85000, 'cat': 'salary', 'note': 'Monthly salary',
-                                'ts': int(pay.timestamp() * 1000), 'createdAt': int(pay.timestamp() * 1000)})
+                                'ts': int(pay.timestamp() * 1000), 'createdAt': int(pay.timestamp() * 1000), 'pay': 'debit'})
             if month.month in (3, 9):
                 t = month.replace(day=28, hour=10)
                 credits.append({'id': 'int%d' % len(credits), 'amount': 2350, 'cat': 'interest', 'note': 'Savings interest',
-                                'ts': int(t.timestamp() * 1000), 'createdAt': int(t.timestamp() * 1000)})
+                                'ts': int(t.timestamp() * 1000), 'createdAt': int(t.timestamp() * 1000), 'pay': 'debit'})
         month = (month + timedelta(days=32)).replace(day=1)
-    return entries, credits
+    return entries, credits, modes
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    entries, credits = make_data()
+    entries, credits, modes = make_data()
     srv = T.AppServer(T.APP_DIR)
     plan = [('INR', k, None) for k in ['week', 'month', 'lastmonth', 'last3', 'last6', 'fy', 'lastfy', 'all']] + \
            [('INR', 'custom', {'from': '2026-01-01', 'to': '2026-03-31'})] + \
@@ -80,7 +86,8 @@ def main():
         b = p.chromium.launch()
         d = T.Device(b, srv, kind='desktop', clock=NOW).open()
         d.ev("""(a) => { localStorage.setItem('spendlog.v1', JSON.stringify({ e: a.e, m: [], p: [], s: [] }));
-          localStorage.setItem('spenderrr.credits', JSON.stringify({ e: a.c })); }""", {'e': entries, 'c': credits})
+          localStorage.setItem('spenderrr.credits', JSON.stringify({ e: a.c }));
+          localStorage.setItem('spenderrr.paymodes', JSON.stringify({ e: a.m })); }""", {'e': entries, 'c': credits, 'm': modes})
         d.reload()
         for currency, k, opts in plan:
             d.ev("(c) => localStorage.setItem('spendlog.currency', c)", currency)

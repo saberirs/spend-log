@@ -2502,7 +2502,7 @@ def excel_report_downloads(b, srv):
     assert entries[2][4] == 30 and entries[2][5] == 'Bill $60.00 paid by you · You $30.00, Ravi $30.00', entries[2]
     assert [e[7] for e in entries[:4]] == [-12.5, -52.5, -82.5, 917.5], 'Running balance'
     assert entries[4][4] == 82.5 and entries[4][6] == 1000 and entries[4][7] == 917.5, entries[4]
-    assert ws.auto_filter.ref == 'B%d:H%d' % (head, head + 4), ws.auto_filter.ref
+    assert ws.auto_filter.ref == 'B%d:I%d' % (head, head + 4), ws.auto_filter.ref
     assert ws.print_title_rows.replace('$', '') == '%d:%d' % (head, head), ws.print_title_rows
     assert "didn't load" not in d.page.inner_text('body')
     d.close()
@@ -2533,7 +2533,7 @@ def excel_report_with_many_entries(b, srv):
     notes = [ws.cell(r, 4).value for r in range(head + 1, head + 121)]
     assert notes == ['Item %d' % (i + 1) for i in range(120)], 'All 120 entries in time order'
     assert ws.cell(head + 121, 2).value == 'Total' and ws.cell(head + 121, 5).value == sum(range(1, 121)), ws.cell(head + 121, 5).value
-    assert ws.auto_filter.ref == 'B%d:H%d' % (head, head + 120), ws.auto_filter.ref
+    assert ws.auto_filter.ref == 'B%d:I%d' % (head, head + 120), ws.auto_filter.ref
     d.close()
 
 
