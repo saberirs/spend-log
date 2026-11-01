@@ -139,9 +139,12 @@
     var r = monthRange(d), i = moneyIn(r[0], r[1]), o = moneyOut(r[0], r[1]);
     return { month: MONTHS[d.getMonth()] + ' ' + d.getFullYear(), in: i, out: o, balance: round(i - o) };
   }
+  // Amount with the currency picked in the app's settings ($, ₹ or €).
   function money(n) {
+    var c = ''; try { c = localStorage.getItem('spendlog.currency') || ''; } catch (e) { /* ignore */ }
+    var cur = c === 'INR' ? ['₹', 'en-IN'] : c === 'EUR' ? ['€', 'en-IE'] : ['$', 'en-US'];
     var a = Math.abs(Number(n) || 0);
-    return (n < 0 ? '−' : '') + '$' + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (n < 0 ? '−' : '') + cur[0] + a.toLocaleString(cur[1], { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function localInput(ts) {
@@ -153,6 +156,43 @@
     return d.getDate() + ' ' + SHORT[d.getMonth()] + ' · ' + ((h % 12) || 12) + ':' + m + ' ' + (h < 12 ? 'AM' : 'PM');
   }
   function newId(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  // ---------- Payment mode ----------
+  // How each entry was paid. Money in keeps it on its own entry ("pay"). The app rewrites its expenses
+  // without fields it doesn't know, so expenses keep theirs in spenderrr.paymodes: { e: [{ id, pay }] },
+  // which backup.js backs up and merges like the other lists.
+  var PAY_KEY = 'spenderrr.paymodes', PAY_LAST_KEY = 'spenderrr.paylast';
+  var PAY_OUT = [['credit_card', 'Credit card'], ['upi', 'UPI'], ['cash', 'Cash'], ['food_card', 'Food card / Sodexo']];
+  var PAY_IN = [['cash', 'Cash'], ['debit', 'Debit card / Account']];
+  function payList(side) { return side === 'in' ? PAY_IN : PAY_OUT; }
+  function validPay(side, v) { return payList(side).some(function (p) { return p[0] === v; }); }
+  function payLabel(side, v) { var p = payList(side).filter(function (x) { return x[0] === v; })[0]; return p ? p[1] : ''; }
+  function payModes() {
+    var s = read(PAY_KEY), m = {};
+    (Array.isArray(s.e) ? s.e : []).forEach(function (x) { if (x && typeof x.id === 'string' && validPay('out', x.pay)) m[x.id] = x.pay; });
+    return m;
+  }
+  function setPayMode(id, value) {
+    var s = read(PAY_KEY);
+    var list = (Array.isArray(s.e) ? s.e : []).filter(function (x) { return x && x.id !== String(id); });
+    if (validPay('out', value)) list.push({ id: String(id), pay: value });
+    s.e = list;
+    write(PAY_KEY, s);
+  }
+  // The mode picked last time (on this device), so a new entry starts with it.
+  function lastPay(side) { var l = read(PAY_LAST_KEY); return validPay(side, l[side]) ? l[side] : ''; }
+  function rememberPay(side, value) { var l = read(PAY_LAST_KEY); l[side] = validPay(side, value) ? value : ''; write(PAY_LAST_KEY, l); }
+  function payField(side, value, onChange) {
+    var wrap = el('label', { class: 'spx-pay' });
+    wrap.appendChild(el('span', { class: 'lab' }, 'Payment mode'));
+    var sel = el('select', { id: side === 'in' ? 'spxPayIn' : 'spxPay' });
+    sel.appendChild(el('option', { value: '' }, 'Not set'));
+    payList(side).forEach(function (p) { sel.appendChild(el('option', { value: p[0] }, p[1])); });
+    sel.value = validPay(side, value) ? value : '';
+    if (onChange) sel.addEventListener('change', function () { onChange(sel.value); });
+    wrap.appendChild(sel);
+    return wrap;
+  }
 
   // ---------- Small UI helpers (uses the app's own styles) ----------
   var css = '' +
@@ -192,7 +232,10 @@
     'box-sizing:border-box;min-height:48px;text-align:left;background:var(--surface);color:var(--ink)}' +
     'input[type=datetime-local]::-webkit-date-and-time-value{text-align:left;margin:0}' +
     '#sheetRoot .row2{grid-template-columns:minmax(0,1fr) auto;align-items:stretch}' +
-    '#sheetRoot .row2 > *{min-width:0}#sheetRoot .row2 .ghost{display:flex;align-items:center;justify-content:center;padding:0 18px}';
+    '#sheetRoot .row2 > *{min-width:0}#sheetRoot .row2 .ghost{display:flex;align-items:center;justify-content:center;padding:0 18px}' +
+    '.spx-pay{display:block}.spx-pay select{display:block;width:100%;min-width:0;box-sizing:border-box;min-height:48px;border:1.5px solid var(--line);' +
+    'border-radius:12px;padding:11px 12px;font:inherit;font-size:16px;background:var(--surface);color:var(--ink)}' +
+    '.spx-pay select:focus{border-color:var(--accent);outline:none}';
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
@@ -286,6 +329,8 @@
     amt.value = existing ? String(existing.amount) : (preset && preset.amount ? String(preset.amount) : '');
     amtWrap.appendChild(amt);
     box.appendChild(amtWrap);
+    var payWrap = payField('in', existing ? existing.pay : lastPay('in'));
+    box.appendChild(payWrap);
 
     box.appendChild(el('span', { class: 'lab' }, 'Category'));
     var chips = el('div', { class: 'chips', id: 'spxCreditCats' });
@@ -333,6 +378,9 @@
       var list = credits();
       var item = { id: existing ? existing.id : newId('cr_'), amount: round(value), cat: chosen, note: cleanNote(note.value), ts: ts,
         createdAt: existing ? existing.createdAt || Date.now() : Date.now() };
+      var mode = payWrap.querySelector('select').value;
+      if (validPay('in', mode)) item.pay = mode;
+      rememberPay('in', mode);
       if (existing) list = list.map(function (x) { return x.id === existing.id ? item : x; });
       else list.push(item);
       saveCredits(list);
@@ -536,6 +584,7 @@
       box.insertAdjacentElement('beforebegin', el('label', { class: 'lab spx-amt-lab', for: 'fAmt' }, 'Amount'));
     }
     var sheetEl = amt && amt.closest('.sheet');
+    addExpensePayField(sheetEl, box);
     if (!sheetEl || sheetEl.dataset.spx) return;
     var title = sheetEl.querySelector('.sheet-h h3');
     if (!title || !/^new expense$/i.test(title.textContent.trim())) return;
@@ -563,6 +612,57 @@
         });
       }));
     }
+  }
+
+  // Payment mode in the app's own New / Edit expense form, under the amount. The app may redraw the
+  // form (e.g. when a category is tapped), so the choice is kept here and put back each time.
+  var expensePay = { choice: null, editId: null, pending: null };
+  function expenseFormTitle(sheetEl) {
+    var t = sheetEl && sheetEl.querySelector('.sheet-h h3');
+    return t ? t.textContent.trim().toLowerCase() : '';
+  }
+  function addExpensePayField(sheetEl, amtBox) {
+    var title = expenseFormTitle(sheetEl);
+    if (title !== 'new expense' && title !== 'edit expense') { if (!sheetEl) expensePay.choice = null; return; }
+    if (sheetEl.querySelector('#spxPay') || !amtBox) return;
+    if (expensePay.choice === null) {
+      expensePay.choice = title === 'edit expense' && expensePay.editId ? payModes()[expensePay.editId] || '' : lastPay('out');
+    }
+    amtBox.insertAdjacentElement('afterend', payField('out', expensePay.choice, function (v) { expensePay.choice = v; }));
+  }
+  // Which expense the form is for: the one tapped in a list (Edit expense), or none (New expense).
+  function notePayTarget(e) {
+    var t = e.target && e.target.closest;
+    if (!t) return;
+    var edit = e.target.closest('[data-edit]');
+    if (edit && !e.target.closest('#sheetRoot .sheet')) { expensePay.editId = edit.getAttribute('data-edit'); expensePay.choice = null; }
+    else if (e.target.closest('#fab')) { expensePay.editId = null; expensePay.choice = null; }
+  }
+  // Just before the app saves the form: remember the mode, then attach it to the saved expense
+  // when the app writes its list (see the setItem hook in start()).
+  function onExpenseSubmit(e) {
+    var form = e.target;
+    if (!form || form.id !== 'entryForm') return;
+    var sel = form.querySelector('#spxPay');
+    if (!sel) return;
+    var editing = expenseFormTitle(form) === 'edit expense';
+    var ids = {};
+    debitEntries().forEach(function (x) { if (x && x.id !== undefined) ids[String(x.id)] = 1; });
+    expensePay.pending = { mode: sel.value, editId: editing ? expensePay.editId : null, before: ids, at: Date.now() };
+    rememberPay('out', sel.value);
+  }
+  function afterExpenseSave(value) {
+    var p = expensePay.pending;
+    if (!p || Date.now() - p.at > 5000) return;
+    var list;
+    try { list = (JSON.parse(value) || {}).e; } catch (e) { list = null; }
+    if (!Array.isArray(list)) return;
+    var target = null;
+    if (p.editId !== null && list.some(function (x) { return x && String(x.id) === String(p.editId); })) target = String(p.editId);
+    else list.forEach(function (x) { if (!target && x && x.id !== undefined && !p.before[String(x.id)]) target = String(x.id); });
+    if (target === null) return;
+    expensePay.pending = null;
+    setPayMode(target, p.mode);
   }
 
   function reloadThenReopen(state) {
@@ -722,8 +822,9 @@
       [].forEach.call(root.querySelectorAll('p'), function (p) {
         if (/^The workbook has /.test(p.textContent) && !p.__spx) {
           p.__spx = true;
-          p.textContent = 'One colour-coded Dashboard sheet: money in, money out and balance, where the money went, ' +
-            'week-by-week totals, and every entry with date, time, split and money in (with filter buttons).';
+          p.textContent = 'A colour-coded Dashboard sheet: money in, money out and balance, where the money went, ' +
+            'week-by-week totals, and every entry with date, time, split and money in (with filter buttons). ' +
+            'Periods longer than a month add one tab per month with entries, newest first.';
         }
       });
     }).observe(root, { childList: true, subtree: true });
@@ -759,11 +860,14 @@
     window.addEventListener('storage', drawSummary);
     // The app saves its own entries without telling us: redraw shortly after its saves.
     var set = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (k) {
+    Storage.prototype.setItem = function (k, v) {
       var r = set.apply(this, arguments);
+      if (this === window.localStorage && k === DATA_KEY) { try { afterExpenseSave(v); } catch (e) { console.warn('Payment mode not saved', e); } }
       if (this === window.localStorage && (k === DATA_KEY || k === CREDITS_KEY)) setTimeout(drawSummary, 0);
       return r;
     };
+    window.addEventListener('click', notePayTarget, true);
+    window.addEventListener('submit', onExpenseSubmit, true);
     drawSummary();
     reopenAfterReload();
     hookExcel();
@@ -775,6 +879,7 @@
     summary: summary, moneyIn: moneyIn, moneyOut: moneyOut, monthRange: monthRange, credits: credits,
     creditCategories: creditCategories, customCats: customCats, addCategory: addCategory, deleteCategory: deleteCategory,
     openCreditForm: openCreditForm, openList: openList, openManage: openManage, cleanLabel: cleanLabel,
+    payModes: payModes, payLabel: payLabel, PAY_OUT: PAY_OUT, PAY_IN: PAY_IN,
     changeColour: changeColour, colourOwners: colourOwners,
     palette: function () { return PALETTE.map(function (p) { return { color: p[0], name: p[1] }; }); },
     builtInColours: function () { return BUILT_IN_COLORS.map(function (b) { return { label: b[0], color: b[1] }; }); }
