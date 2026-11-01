@@ -460,6 +460,25 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
   function money(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+  // The currency picked in the app's settings. INR uses India's financial year (April to March);
+  // USD and EUR use the calendar year (January to December).
+  var CUR_KEY = 'spendlog.currency';
+  function currencyInfo() {
+    var c = ''; try { c = localStorage.getItem(CUR_KEY) || ''; } catch (e) { /* ignore */ }
+    if (c === 'INR') return { code: 'INR', sym: '₹', loc: 'en-IN', fyStart: 3 };
+    if (c === 'EUR') return { code: 'EUR', sym: '€', loc: 'en-IE', fyStart: 0 };
+    return { code: 'USD', sym: '$', loc: 'en-US', fyStart: 0 };
+  }
+  // Amount as text with the currency sign: ₹1,25,000.00 / $1,250.00 / €1,250.00
+  function cur(n) {
+    var c = currencyInfo(), v = Math.abs(money(n));
+    return (n < 0 ? '-' : '') + c.sym + v.toLocaleString(c.loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Excel number format for amounts, with the currency sign (negative amounts in red when asked).
+  function moneyFormat(red) {
+    var s = '&quot;' + currencyInfo().sym + '&quot;#,##0.00';
+    return red ? s + ';[Red]-' + s : s;
+  }
   function localDate(ts) { var d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function localTime(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 
@@ -758,7 +777,7 @@
 
     var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      '<numFmts count="3"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/>' +
+      '<numFmts count="3"><numFmt numFmtId="164" formatCode="' + moneyFormat(false) + '"/>' +
       '<numFmt numFmtId="165" formatCode="ddd d mmm yyyy"/><numFmt numFmtId="166" formatCode="h:mm AM/PM"/></numFmts>' +
       '<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font>' +
       '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
@@ -829,20 +848,80 @@
   function excelBlob(data) { return zip(excelWorkbook(data || localData())); }
 
   // ---------- Excel report (the Excel button) ----------
-  // One colour-coded "Overview" sheet in Times New Roman: money in, money out and balance, totals by
+  // A colour-coded "Dashboard" sheet in Times New Roman: money in, money out and balance, totals by
   // category, then every expense and money-in entry by date and time, with split details and money in
   // side by side, and week-by-week totals. Periods match the app: weeks start on Monday.
+  // When the period covers more than one month, each month that has entries gets its own tab after
+  // the Dashboard, newest month first (a month with no entries gets no tab).
   var REPORT_FONT = 'Times New Roman';
-  function reportPeriod(k, now) {
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function shortMonth(d) { return MONTH_NAMES[d.getMonth()].slice(0, 3); }
+  // "2026-10-05" -> local midnight of that day (null when it isn't a real date)
+  function dayFromText(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+    if (!m) return null;
+    var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return d.getFullYear() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3]) ? d : null;
+  }
+  // Financial year that contains a date: INR April–March ("2026-27"), USD/EUR January–December ("2026").
+  function fyStartYear(now, c) { return now.getMonth() >= c.fyStart ? now.getFullYear() : now.getFullYear() - 1; }
+  function fyName(y, c) { return c.fyStart ? y + '-' + String(y + 1).slice(2) : String(y); }
+  // Every period the report offers. opts.from / opts.to ("YYYY-MM-DD", both days included) for custom.
+  var REPORT_KEYS = ['week', 'month', 'lastmonth', 'last3', 'last6', 'fy', 'lastfy', 'all', 'custom'];
+  function reportPeriod(k, now, opts) {
     now = now || new Date();
-    var y = now.getFullYear(), m = now.getMonth();
+    var y = now.getFullYear(), m = now.getMonth(), c = currencyInfo();
     if (k === 'week') {
       var mon = new Date(y, m, now.getDate() - ((now.getDay() + 6) % 7));
       return { start: mon.getTime(), end: new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 7).getTime() };
     }
     if (k === 'month') return { start: new Date(y, m, 1).getTime(), end: new Date(y, m + 1, 1).getTime() };
     if (k === 'lastmonth') return { start: new Date(y, m - 1, 1).getTime(), end: new Date(y, m, 1).getTime() };
+    // Last 3 / 6 months: this month and the months just before it.
+    if (k === 'last3') return { start: new Date(y, m - 2, 1).getTime(), end: new Date(y, m + 1, 1).getTime() };
+    if (k === 'last6') return { start: new Date(y, m - 5, 1).getTime(), end: new Date(y, m + 1, 1).getTime() };
+    if (k === 'fy' || k === 'lastfy') {
+      var fy = fyStartYear(now, c) - (k === 'lastfy' ? 1 : 0);
+      return { start: new Date(fy, c.fyStart, 1).getTime(), end: new Date(fy + 1, c.fyStart, 1).getTime(), fy: fy };
+    }
+    if (k === 'custom') {
+      var a = dayFromText(opts && opts.from), b = dayFromText(opts && opts.to);
+      if (!a || !b || a > b) return null;
+      return { start: a.getTime(), end: new Date(b.getFullYear(), b.getMonth(), b.getDate() + 1).getTime() };
+    }
     return { start: -Infinity, end: Infinity };
+  }
+  // What the picker shows for each period, and the name used in the file name.
+  function periodLabel(k, now, opts) {
+    now = now || new Date();
+    var c = currencyInfo(), fy = fyStartYear(now, c);
+    switch (k) {
+      case 'week': return 'This week';
+      case 'month': return 'This month';
+      case 'lastmonth': return 'Last month';
+      case 'last3': return 'Last 3 months';
+      case 'last6': return 'Last 6 months';
+      case 'fy': return c.fyStart ? 'Financial year ' + fyName(fy, c) : 'Year ' + fyName(fy, c);
+      case 'lastfy': return c.fyStart ? 'Last financial year ' + fyName(fy - 1, c) : 'Last year ' + fyName(fy - 1, c);
+      case 'custom': return opts && opts.from && opts.to ? opts.from + ' to ' + opts.to : 'Custom dates';
+      default: return 'All entries';
+    }
+  }
+  // Short range under each choice: "Aug – Oct 2026", "Apr 2026 – Mar 2027", "1 – 7 Sep 2026".
+  function rangeText(per) {
+    if (!per || !isFinite(per.start) || !isFinite(per.end)) return '';
+    var a = new Date(per.start), b = new Date(per.end - 1);
+    var whole = a.getDate() === 1 && new Date(per.end).getDate() === 1;
+    if (whole) {
+      if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) return MONTH_NAMES[a.getMonth()] + ' ' + a.getFullYear();
+      return a.getFullYear() === b.getFullYear() ? shortMonth(a) + ' – ' + shortMonth(b) + ' ' + b.getFullYear()
+        : shortMonth(a) + ' ' + a.getFullYear() + ' – ' + shortMonth(b) + ' ' + b.getFullYear();
+    }
+    if (a.getFullYear() === b.getFullYear()) {
+      return a.getMonth() === b.getMonth() && a.getDate() === b.getDate() ? a.getDate() + ' ' + shortMonth(a) + ' ' + a.getFullYear()
+        : a.getDate() + ' ' + (a.getMonth() === b.getMonth() ? '' : shortMonth(a) + ' ') + '– ' + b.getDate() + ' ' + shortMonth(b) + ' ' + b.getFullYear();
+    }
+    return a.getDate() + ' ' + shortMonth(a) + ' ' + a.getFullYear() + ' – ' + b.getDate() + ' ' + shortMonth(b) + ' ' + b.getFullYear();
   }
   function shareOf(x) {
     var v = x && x.split && x.split.my !== undefined && x.split.my !== null ? Number(x.split.my) : Number(x && x.amount);
@@ -852,30 +931,52 @@
     var sp = x && x.split;
     if (!sp || !Array.isArray(sp.parts)) return '';
     var shares = sp.parts.filter(function (pt) { return pt && pt.name; })
-      .map(function (pt) { return (pt.name === 'Me' ? 'You' : pt.name) + ' $' + money(pt.amt).toFixed(2); });
-    return 'Bill $' + money(x.amount).toFixed(2) + ' paid by ' + (sp.paidBy === 'Me' ? 'you' : String(sp.paidBy)) +
+      .map(function (pt) { return (pt.name === 'Me' ? 'You' : pt.name) + ' ' + cur(pt.amt); });
+    return 'Bill ' + cur(x.amount) + ' paid by ' + (sp.paidBy === 'Me' ? 'you' : String(sp.paidBy)) +
       (shares.length ? ' · ' + shares.join(', ') : '');
   }
-  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  // Expenses and money in from a set of saved data (all dates).
+  function reportEntries(data) {
+    var store = parseStore(data[DATA_KEY]);
+    return {
+      outs: (Array.isArray(store.e) ? store.e : []).filter(function (x) { return x && isFinite(Number(x.ts)); }),
+      ins: creditList(data).filter(function (x) { return isFinite(Number(x.ts)); })
+    };
+  }
+  // Months (first-of-month times) that have at least one expense or money-in entry in the period, newest first.
+  function monthsWithEntries(list, per) {
+    var seen = {};
+    list.forEach(function (x) {
+      var ts = Number(x.ts);
+      if (ts < per.start || ts >= per.end) return;
+      var d = new Date(ts);
+      seen[new Date(d.getFullYear(), d.getMonth(), 1).getTime()] = 1;
+    });
+    return Object.keys(seen).map(Number).sort(function (a, b) { return b - a; });
+  }
+  // Does the period reach into more than one calendar month? (Weeks never get month tabs.)
+  function coversSeveralMonths(k, per, list) {
+    if (k === 'week' || k === 'month' || k === 'lastmonth') return false;
+    var a = per.start, b = per.end - 1;
+    if (!isFinite(a) || !isFinite(b)) {          // all entries: from the first to the last entry
+      var times = list.map(function (x) { return Number(x.ts); });
+      if (!times.length) return false;
+      a = Math.min.apply(null, times); b = Math.max.apply(null, times);
+    }
+    var da = new Date(a), db = new Date(b);
+    return da.getFullYear() !== db.getFullYear() || da.getMonth() !== db.getMonth();
+  }
+
   // "Dashboard" design: four cards on top, where the money went (coloured bars) beside money in and
   // week-by-week totals, then every entry by date and time with filter buttons on its header.
-  function reportWorkbook(data, k, label, now) {
+  // k: period key, label: shown top right, opts: {from, to} for custom dates.
+  function reportWorkbook(data, k, label, now, opts) {
     now = now || new Date();
     data = data || localData();
     loadYours(data);
-    var per = reportPeriod(k, now);
-    var inPeriod = function (x) { var ts = Number(x && x.ts); return isFinite(ts) && ts >= per.start && ts < per.end; };
-    var store = parseStore(data[DATA_KEY]);
-    var outs = (Array.isArray(store.e) ? store.e : []).filter(inPeriod);
-    var ins = creditList(data).filter(inPeriod);
-    var all = outs.map(function (x) { return { side: 'out', x: x }; }).concat(ins.map(function (x) { return { side: 'in', x: x }; }))
-      .sort(function (a, b) { return (Number(a.x.ts) - Number(b.x.ts)) || ((Number(a.x.createdAt) || 0) - (Number(b.x.createdAt) || 0)); });
-    var times = all.map(function (r) { return Number(r.x.ts); });
-    var from = isFinite(per.start) ? per.start : (times.length ? Math.min.apply(null, times) : now.getTime());
-    var to = isFinite(per.end) ? per.end - 1 : (times.length ? Math.max.apply(null, times) : now.getTime());
-    var fd = new Date(from);
-    var heading = k === 'month' || k === 'lastmonth' ? MONTH_NAMES[fd.getMonth()] + ' ' + fd.getFullYear()
-      : k === 'week' ? 'Week of ' + fd.getDate() + ' ' + MONTH_NAMES[fd.getMonth()].slice(0, 3) + ' ' + fd.getFullYear() : 'All entries';
+    var per = reportPeriod(k, now, opts);
+    if (!per) throw new Error('Pick a From date on or before the To date');
+    var everything = reportEntries(data);
 
     function colorOf(id, side) {
       if (side === 'in') {
@@ -889,7 +990,7 @@
     }
     function catId(x, side) { return String((x && x.cat) || (side === 'in' ? 'other_in' : 'other')); }
 
-    // ---- Style registry (fonts, fills, borders, cell formats), all Times New Roman ----
+    // ---- Style registry (fonts, fills, borders, cell formats), all Times New Roman, shared by every tab ----
     var fonts = [], fontIds = {}, fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'],
       fillIds = {}, borders = ['<border><left/><right/><top/><bottom/><diagonal/></border>'], borderIds = {}, xfs = [], xfIds = {};
     function font(f) {        // f: {b, i, color, size}
@@ -926,157 +1027,7 @@
     }
     st({});      // xf 0 = default
     var NAVY = '22356E', GREEN = '2E7D32', RED = 'C2412D', GREY = '5B6678', LINE = 'DCE1E9', ROWLINE = 'E6E9EE', INK = '162033';
-    var MONEY = 164, DATETIME = 165, PCT = 167, SHORTDATE = 168;
-
-    // ---- Rows ----
-    var rows = [], merges = [];
-    function row(cells, height) { rows.push({ cells: cells, height: height }); return rows.length; }
-    function mergeRow(a, b, r) { merges.push(a + r + ':' + b + r); }
-    var BLANK = null;
-
-    // Title
-    var r = row([BLANK, [heading, st({ font: { b: 1, color: NAVY, size: 22 } })], BLANK, BLANK, BLANK, BLANK, BLANK,
-      ['Spenderrr · ' + label, st({ font: { i: 1, color: GREY, size: 11 }, align: 'right' })]], 34);
-    mergeRow('B', 'E', r); mergeRow('F', 'H', r);
-    r = row([BLANK, [localDate(from) + ' to ' + localDate(to) + '  ·  made ' + localDate(now.getTime()) + ' ' + localTime(now.getTime()),
-      st({ font: { i: 1, color: GREY, size: 10 }, border: { bottom: ['medium', NAVY] } })]].concat(['C', 'D', 'E', 'F', 'G', 'H'].map(function () {
-      return ['', st({ border: { bottom: ['medium', NAVY] } })];
-    })), 20);
-    mergeRow('B', 'H', r);
-    row([], 10);
-
-    // Cards
-    var totalIn = money(ins.reduce(function (t, x) { return t + Number(x.amount); }, 0));
-    var totalOut = money(outs.reduce(function (t, x) { return t + shareOf(x); }, 0));
-    var bal = money(totalIn - totalOut);
-    var outGroups = {}, inGroups = {};
-    outs.forEach(function (x) { var id = catId(x, 'out'); (outGroups[id] = outGroups[id] || { n: 0, sum: 0 }); outGroups[id].n++; outGroups[id].sum += shareOf(x); });
-    ins.forEach(function (x) { var id = catId(x, 'in'); (inGroups[id] = inGroups[id] || { n: 0, sum: 0 }); inGroups[id].n++; inGroups[id].sum += Number(x.amount); });
-    var outIds = Object.keys(outGroups).sort(function (a, b) { return outGroups[b].sum - outGroups[a].sum || labelOf(a, 'out').localeCompare(labelOf(b, 'out')); });
-    var inIds = Object.keys(inGroups).sort(function (a, b) { return inGroups[b].sum - inGroups[a].sum || labelOf(a, 'in').localeCompare(labelOf(b, 'in')); });
-    var top = outIds[0];
-    var cards = [
-      { cols: ['B', 'C'], color: GREEN, label: 'MONEY IN', value: totalIn, sub: ins.length + (ins.length === 1 ? ' entry' : ' entries') },
-      { cols: ['D', 'E'], color: RED, label: 'MONEY OUT', value: totalOut, sub: outs.length + (outs.length === 1 ? ' expense' : ' expenses') + ' · your share' },
-      { cols: ['F'], color: NAVY, label: 'BALANCE', value: bal,
-        sub: totalIn > 0 ? (bal >= 0 ? Math.round(bal / totalIn * 100) + '% of money in saved' : 'Spent $' + money(-bal).toFixed(2) + ' more than came in') : 'No money in yet' },
-      { cols: ['G', 'H'], color: top ? colorOf(top, 'out') : NAVY, label: 'BIGGEST', value: top ? labelOf(top, 'out') + ' $' + money(outGroups[top].sum).toFixed(2) : '—',
-        sub: top && totalOut ? Math.round(outGroups[top].sum / totalOut * 100) + '% of spending' : 'No expenses yet' }
-    ];
-    var letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    [0, 1, 2].forEach(function (line) {
-      var cells = [BLANK];
-      cards.forEach(function (c) {
-        var first = letters.indexOf(c.cols[0]), last = letters.indexOf(c.cols[c.cols.length - 1]);
-        for (var i = first; i <= last; i++) {
-          var border = { left: i === first ? ['thin', LINE] : undefined, right: i === last ? ['thin', LINE] : undefined };
-          if (line === 0) border.top = ['thick', c.color];
-          if (line === 2) border.bottom = ['thin', LINE];
-          var v = i !== first ? '' : line === 0 ? c.label : line === 1 ? c.value : c.sub;
-          var f = line === 0 ? { color: GREY, size: 10 } : line === 1 ? { b: 1, color: c.color, size: 20 } : { color: GREY, size: 10 };
-          cells[i] = [v, st({ font: f, border: border, fmt: line === 1 && typeof c.value === 'number' ? MONEY : 0 })];
-        }
-      });
-      var rr = row(cells, line === 1 ? 34 : 20);
-      cards.forEach(function (c) { if (c.cols.length > 1) mergeRow(c.cols[0], c.cols[c.cols.length - 1], rr); });
-    });
-    row([], 14);
-
-    // Where the money went (left, B–E)  |  Money in + week by week (right, F–H)
-    function bars(v, max, width) { var n = max > 0 ? Math.max(v > 0 ? 1 : 0, Math.round(v / max * width)) : 0; return new Array(n + 1).join('█'); }
-    var left = [], right = [];
-    var head = function (text, color, a, b) {
-      var cells = {};
-      letters.slice(letters.indexOf(a), letters.indexOf(b) + 1).forEach(function (L, i) {
-        cells[L] = [i ? '' : text, st({ font: { b: 1, color: color, size: 13 }, border: { bottom: ['medium', color] } })];
-      });
-      return { cells: cells, merge: [a, b], height: 24 };
-    };
-    left.push(head('WHERE THE MONEY WENT', RED, 'B', 'E'));
-    if (!outIds.length) left.push({ cells: { B: ['No expenses in this period', st({ font: { i: 1, color: GREY } })] } });
-    var maxOut = outIds.length ? outGroups[outIds[0]].sum : 0;
-    outIds.forEach(function (id) {
-      var hex = colorOf(id, 'out');
-      left.push({ cells: {
-        B: [{ runs: [['■ ', { color: hex, size: 14 }], [labelOf(id, 'out'), { color: INK, size: 12 }]] }, st({ font: { size: 12 } })],
-        C: [bars(outGroups[id].sum, maxOut, 18), st({ font: { color: hex, size: 11 }, flush: 1 })],
-        E: [money(outGroups[id].sum), st({ font: { b: 1, size: 12 }, fmt: MONEY, align: 'right' })]
-      }, merge: ['C', 'D'], height: 22 });
-    });
-    right.push(head('MONEY IN', GREEN, 'F', 'H'));
-    if (!inIds.length) right.push({ cells: { F: ['No money in for this period', st({ font: { i: 1, color: GREY } })] } });
-    var maxIn = inIds.length ? inGroups[inIds[0]].sum : 0;
-    inIds.forEach(function (id) {
-      var hex = colorOf(id, 'in');
-      right.push({ cells: {
-        F: [{ runs: [['■ ', { color: hex, size: 14 }], [labelOf(id, 'in'), { color: INK, size: 12 }]] }, st({ font: { size: 12 } })],
-        G: [bars(inGroups[id].sum, maxIn, 7), st({ font: { color: hex, size: 11 }, flush: 1 })],
-        H: [money(inGroups[id].sum), st({ font: { b: 1, size: 12 }, fmt: MONEY, align: 'right' })]
-      }, height: 22 });
-    });
-    if (all.length) {
-      right.push({ cells: {}, height: 10 });
-      right.push(head('WEEK BY WEEK', NAVY, 'F', 'H'));
-      right.push({ cells: {
-        F: ['Week starting (Mon)', st({ font: { color: GREY, size: 10 } })],
-        G: ['Out', st({ font: { color: GREY, size: 10 }, align: 'right' })], H: ['In', st({ font: { color: GREY, size: 10 }, align: 'right' })] } });
-      var weeks = {};
-      all.forEach(function (rw) {
-        var d = new Date(Number(rw.x.ts)), mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
-        var w = weeks[mon] || (weeks[mon] = { out: 0, inn: 0 });
-        if (rw.side === 'out') w.out += shareOf(rw.x); else w.inn += Number(rw.x.amount);
-      });
-      Object.keys(weeks).map(Number).sort(function (a, b) { return a - b; }).forEach(function (mon) {
-        right.push({ cells: {
-          F: [excelDate(mon), st({ font: { size: 12 }, fmt: SHORTDATE })],
-          G: [weeks[mon].out ? money(weeks[mon].out) : '', st({ font: { color: RED, size: 12 }, fmt: MONEY, align: 'right' })],
-          H: [weeks[mon].inn ? money(weeks[mon].inn) : '', st({ font: { color: GREEN, size: 12 }, fmt: MONEY, align: 'right' })] }, height: 20 });
-      });
-    }
-    for (var i = 0; i < Math.max(left.length, right.length); i++) {
-      var L = left[i] || { cells: {} }, R = right[i] || { cells: {} }, cells = [];
-      letters.forEach(function (c, j) { cells[j] = L.cells[c] || R.cells[c] || BLANK; });
-      var rr2 = row(cells, Math.max(L.height || 18, R.height || 18));
-      if (L.merge) mergeRow(L.merge[0], L.merge[1], rr2);
-      if (R.merge) mergeRow(R.merge[0], R.merge[1], rr2);
-    }
-    row([], 16);
-
-    // All entries
-    var hr = row([BLANK].concat(['ALL ENTRIES', '', '', '', '', '', ''].map(function (t) {
-      return [t, st({ font: { b: 1, color: NAVY, size: 13 }, border: { bottom: ['medium', NAVY] } })];
-    })), 24);
-    mergeRow('B', 'H', hr);
-    var headStyle = function (align) { return st({ font: { b: 1, color: GREY, size: 10 }, align: align, border: { bottom: ['thin', NAVY] } }); };
-    var headerRow = row([['', headStyle()], ['Date and time', headStyle()], ['Category', headStyle()], ['Note', headStyle()], ['Money out', headStyle('right')],
-      ['Split', headStyle()], ['Money in', headStyle('right')], ['Balance', headStyle('right')]], 20);
-    var running = 0;
-    var line = { bottom: ['thin', ROWLINE] };
-    if (!all.length) { var er = row([BLANK, ['No entries in this period', st({ font: { i: 1, color: GREY } })]]); mergeRow('B', 'H', er); }
-    all.forEach(function (rw) {
-      var x = rw.x, side = rw.side, id = catId(x, side), hex = colorOf(id, side);
-      var out = side === 'out' ? money(shareOf(x)) : '', inn = side === 'in' ? money(x.amount) : '';
-      running = money(running + (inn || 0) - (out || 0));
-      row([
-        ['', st({ fill: hex, border: line, flush: 1 })],
-        [excelDate(x.ts) + excelTime(x.ts), st({ font: { size: 12 }, fmt: DATETIME, border: line })],
-        [labelOf(id, side), st({ font: { b: 1, color: hex, size: 12 }, border: line })],
-        [[x.sub, x.note].filter(function (v) { return v; }).join(' · '), st({ font: { size: 12 }, border: line, wrap: 1 })],
-        [out, st({ font: { size: 12 }, fmt: MONEY, align: 'right', border: line })],
-        [side === 'out' ? splitText(x) : '', st({ font: { color: GREY, size: 10 }, border: line, wrap: 1 })],
-        [inn, st({ font: { color: GREEN, size: 12 }, fmt: MONEY, align: 'right', border: line })],
-        [running, st({ font: { b: 1, color: running < 0 ? RED : INK, size: 12 }, fmt: MONEY, align: 'right', border: line })]
-      ], (splitText(x).length > 46 || String(x.note || '').length > 26) ? 34 : 22);
-    });
-    var lastEntry = rows.length;
-    var tot = { top: ['medium', NAVY] };
-    var tr = row([BLANK, ['Total', st({ font: { b: 1, size: 12 }, border: tot })], ['', st({ border: tot })], ['', st({ border: tot })],
-      [totalOut, st({ font: { b: 1, color: RED, size: 12 }, fmt: MONEY, align: 'right', border: tot })], ['', st({ border: tot })],
-      [totalIn, st({ font: { b: 1, color: GREEN, size: 12 }, fmt: MONEY, align: 'right', border: tot })],
-      [bal, st({ font: { b: 1, color: bal < 0 ? RED : NAVY, size: 12 }, fmt: MONEY, align: 'right', border: tot })]], 24);
-    mergeRow('B', 'D', tr);
-
-    // ---- Write the sheet ----
+    var MONEY = 164, DATETIME = 165, SHORTDATE = 168;
     function runXml(runs) {
       return runs.map(function (u) {
         return '<r><rPr>' + (u[1].b ? '<b/>' : '') + '<sz val="' + (u[1].size || 11) + '"/><color rgb="FF' + (u[1].color || INK) + '"/><rFont val="' + REPORT_FONT +
@@ -1090,25 +1041,209 @@
       if (v && v.runs) return '<c r="' + ref + '" s="' + sx + '" t="inlineStr"><is>' + runXml(v.runs) + '</is></c>';
       return '<c r="' + ref + '" s="' + sx + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + '</t></is></c>';
     }
-    var widths = [1.6, 24, 15, 24, 14, 40, 15, 15];
-    var filterRef = 'B' + headerRow + ':H' + Math.max(headerRow, lastEntry);
-    var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>' +
-      '<sheetFormatPr defaultRowHeight="18"/><cols>' +
-      widths.map(function (w, i2) { return '<col min="' + (i2 + 1) + '" max="' + (i2 + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') +
-      '</cols><sheetData>' +
-      rows.map(function (rw, i2) {
-        return '<row r="' + (i2 + 1) + '"' + (rw.height ? ' ht="' + rw.height + '" customHeight="1"' : '') + '>' +
-          (rw.cells || []).map(function (c, j) { return c ? cell(i2 + 1, j, c[0], c[1]) : ''; }).join('') + '</row>';
-      }).join('') + '</sheetData>' +
-      (all.length ? '<autoFilter ref="' + filterRef + '"/>' : '') +
-      (merges.length ? '<mergeCells count="' + merges.length + '">' + merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join('') + '</mergeCells>' : '') +
-      '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>' +
-      '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
+
+    // One Dashboard-style sheet for the entries between p.start and p.end.
+    function buildSheet(p, heading, tabLabel) {
+      var inPeriod = function (x) { var ts = Number(x && x.ts); return ts >= p.start && ts < p.end; };
+      var outs = everything.outs.filter(inPeriod), ins = everything.ins.filter(inPeriod);
+      var all = outs.map(function (x) { return { side: 'out', x: x }; }).concat(ins.map(function (x) { return { side: 'in', x: x }; }))
+        .sort(function (a, b) { return (Number(a.x.ts) - Number(b.x.ts)) || ((Number(a.x.createdAt) || 0) - (Number(b.x.createdAt) || 0)); });
+      var times = all.map(function (r) { return Number(r.x.ts); });
+      var from = isFinite(p.start) ? p.start : (times.length ? Math.min.apply(null, times) : now.getTime());
+      var to = isFinite(p.end) ? p.end - 1 : (times.length ? Math.max.apply(null, times) : now.getTime());
+
+      var rows = [], merges = [];
+      function row(cells, height) { rows.push({ cells: cells, height: height }); return rows.length; }
+      function mergeRow(a, b, r) { merges.push(a + r + ':' + b + r); }
+      var BLANK = null;
+
+      // Title
+      // The label goes in F, the first cell of the F–H merge (a value in G or H would be hidden by Excel).
+      var r = row([BLANK, [heading, st({ font: { b: 1, color: NAVY, size: 22 } })], BLANK, BLANK, BLANK,
+        ['Spenderrr · ' + tabLabel, st({ font: { i: 1, color: GREY, size: 11 }, align: 'right' })]], 34);
+      mergeRow('B', 'E', r); mergeRow('F', 'H', r);
+      r = row([BLANK, [localDate(from) + ' to ' + localDate(to) + '  ·  made ' + localDate(now.getTime()) + ' ' + localTime(now.getTime()),
+        st({ font: { i: 1, color: GREY, size: 10 }, border: { bottom: ['medium', NAVY] } })]].concat(['C', 'D', 'E', 'F', 'G', 'H'].map(function () {
+        return ['', st({ border: { bottom: ['medium', NAVY] } })];
+      })), 20);
+      mergeRow('B', 'H', r);
+      row([], 10);
+
+      // Cards
+      var totalIn = money(ins.reduce(function (t, x) { return t + Number(x.amount); }, 0));
+      var totalOut = money(outs.reduce(function (t, x) { return t + shareOf(x); }, 0));
+      var bal = money(totalIn - totalOut);
+      var outGroups = {}, inGroups = {};
+      outs.forEach(function (x) { var id = catId(x, 'out'); (outGroups[id] = outGroups[id] || { n: 0, sum: 0 }); outGroups[id].n++; outGroups[id].sum += shareOf(x); });
+      ins.forEach(function (x) { var id = catId(x, 'in'); (inGroups[id] = inGroups[id] || { n: 0, sum: 0 }); inGroups[id].n++; inGroups[id].sum += Number(x.amount); });
+      var outIds = Object.keys(outGroups).sort(function (a, b) { return outGroups[b].sum - outGroups[a].sum || labelOf(a, 'out').localeCompare(labelOf(b, 'out')); });
+      var inIds = Object.keys(inGroups).sort(function (a, b) { return inGroups[b].sum - inGroups[a].sum || labelOf(a, 'in').localeCompare(labelOf(b, 'in')); });
+      var top = outIds[0];
+      var cards = [
+        { cols: ['B', 'C'], color: GREEN, label: 'MONEY IN', value: totalIn, sub: ins.length + (ins.length === 1 ? ' entry' : ' entries') },
+        { cols: ['D', 'E'], color: RED, label: 'MONEY OUT', value: totalOut, sub: outs.length + (outs.length === 1 ? ' expense' : ' expenses') + ' · your share' },
+        { cols: ['F'], color: NAVY, label: 'BALANCE', value: bal,
+          sub: totalIn > 0 ? (bal >= 0 ? Math.round(bal / totalIn * 100) + '% of money in saved' : 'Spent ' + cur(-bal) + ' more than came in') : 'No money in yet' },
+        { cols: ['G', 'H'], color: top ? colorOf(top, 'out') : NAVY, label: 'BIGGEST', value: top ? labelOf(top, 'out') + ' ' + cur(outGroups[top].sum) : '—',
+          sub: top && totalOut ? Math.round(outGroups[top].sum / totalOut * 100) + '% of spending' : 'No expenses yet' }
+      ];
+      var letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      [0, 1, 2].forEach(function (line) {
+        var cells = [BLANK];
+        cards.forEach(function (c) {
+          var first = letters.indexOf(c.cols[0]), last = letters.indexOf(c.cols[c.cols.length - 1]);
+          for (var i = first; i <= last; i++) {
+            var border = { left: i === first ? ['thin', LINE] : undefined, right: i === last ? ['thin', LINE] : undefined };
+            if (line === 0) border.top = ['thick', c.color];
+            if (line === 2) border.bottom = ['thin', LINE];
+            var v = i !== first ? '' : line === 0 ? c.label : line === 1 ? c.value : c.sub;
+            var f = line === 0 ? { color: GREY, size: 10 } : line === 1 ? { b: 1, color: c.color, size: typeof c.value === 'number' ? 20 : 15 } : { color: GREY, size: 10 };
+            cells[i] = [v, st({ font: f, border: border, fmt: line === 1 && typeof c.value === 'number' ? MONEY : 0 })];
+          }
+        });
+        var rr = row(cells, line === 1 ? 34 : 20);
+        cards.forEach(function (c) { if (c.cols.length > 1) mergeRow(c.cols[0], c.cols[c.cols.length - 1], rr); });
+      });
+      row([], 14);
+
+      // Where the money went (left, B–E)  |  Money in + week by week (right, F–H)
+      function bars(v, max, width) { var n = max > 0 ? Math.max(v > 0 ? 1 : 0, Math.round(v / max * width)) : 0; return new Array(n + 1).join('█'); }
+      var left = [], right = [];
+      var head = function (text, color, a, b) {
+        var cells = {};
+        letters.slice(letters.indexOf(a), letters.indexOf(b) + 1).forEach(function (L, i) {
+          cells[L] = [i ? '' : text, st({ font: { b: 1, color: color, size: 13 }, border: { bottom: ['medium', color] } })];
+        });
+        return { cells: cells, merge: [a, b], height: 24 };
+      };
+      left.push(head('WHERE THE MONEY WENT', RED, 'B', 'E'));
+      if (!outIds.length) left.push({ cells: { B: ['No expenses in this period', st({ font: { i: 1, color: GREY } })] } });
+      var maxOut = outIds.length ? outGroups[outIds[0]].sum : 0;
+      outIds.forEach(function (id) {
+        var hex = colorOf(id, 'out');
+        left.push({ cells: {
+          B: [{ runs: [['■ ', { color: hex, size: 14 }], [labelOf(id, 'out'), { color: INK, size: 12 }]] }, st({ font: { size: 12 } })],
+          C: [bars(outGroups[id].sum, maxOut, 18), st({ font: { color: hex, size: 11 }, flush: 1 })],
+          E: [money(outGroups[id].sum), st({ font: { b: 1, size: 12 }, fmt: MONEY, align: 'right' })]
+        }, merge: ['C', 'D'], height: 22 });
+      });
+      right.push(head('MONEY IN', GREEN, 'F', 'H'));
+      if (!inIds.length) right.push({ cells: { F: ['No money in for this period', st({ font: { i: 1, color: GREY } })] } });
+      var maxIn = inIds.length ? inGroups[inIds[0]].sum : 0;
+      inIds.forEach(function (id) {
+        var hex = colorOf(id, 'in');
+        right.push({ cells: {
+          F: [{ runs: [['■ ', { color: hex, size: 14 }], [labelOf(id, 'in'), { color: INK, size: 12 }]] }, st({ font: { size: 12 } })],
+          G: [bars(inGroups[id].sum, maxIn, 7), st({ font: { color: hex, size: 11 }, flush: 1 })],
+          H: [money(inGroups[id].sum), st({ font: { b: 1, size: 12 }, fmt: MONEY, align: 'right' })]
+        }, height: 22 });
+      });
+      if (all.length) {
+        right.push({ cells: {}, height: 10 });
+        right.push(head('WEEK BY WEEK', NAVY, 'F', 'H'));
+        right.push({ cells: {
+          F: ['Week starting (Mon)', st({ font: { color: GREY, size: 10 } })],
+          G: ['Out', st({ font: { color: GREY, size: 10 }, align: 'right' })], H: ['In', st({ font: { color: GREY, size: 10 }, align: 'right' })] } });
+        var weeks = {};
+        all.forEach(function (rw) {
+          var d = new Date(Number(rw.x.ts)), mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
+          var w = weeks[mon] || (weeks[mon] = { out: 0, inn: 0 });
+          if (rw.side === 'out') w.out += shareOf(rw.x); else w.inn += Number(rw.x.amount);
+        });
+        Object.keys(weeks).map(Number).sort(function (a, b) { return a - b; }).forEach(function (mon) {
+          right.push({ cells: {
+            F: [excelDate(mon), st({ font: { size: 12 }, fmt: SHORTDATE })],
+            G: [weeks[mon].out ? money(weeks[mon].out) : '', st({ font: { color: RED, size: 12 }, fmt: MONEY, align: 'right' })],
+            H: [weeks[mon].inn ? money(weeks[mon].inn) : '', st({ font: { color: GREEN, size: 12 }, fmt: MONEY, align: 'right' })] }, height: 20 });
+        });
+      }
+      for (var i = 0; i < Math.max(left.length, right.length); i++) {
+        var L = left[i] || { cells: {} }, R = right[i] || { cells: {} }, cells = [];
+        letters.forEach(function (c, j) { cells[j] = L.cells[c] || R.cells[c] || BLANK; });
+        var rr2 = row(cells, Math.max(L.height || 18, R.height || 18));
+        if (L.merge) mergeRow(L.merge[0], L.merge[1], rr2);
+        if (R.merge) mergeRow(R.merge[0], R.merge[1], rr2);
+      }
+      row([], 16);
+
+      // All entries
+      var hr = row([BLANK].concat(['ALL ENTRIES', '', '', '', '', '', ''].map(function (t) {
+        return [t, st({ font: { b: 1, color: NAVY, size: 13 }, border: { bottom: ['medium', NAVY] } })];
+      })), 24);
+      mergeRow('B', 'H', hr);
+      var headStyle = function (align) { return st({ font: { b: 1, color: GREY, size: 10 }, align: align, border: { bottom: ['thin', NAVY] } }); };
+      var headerRow = row([['', headStyle()], ['Date and time', headStyle()], ['Category', headStyle()], ['Note', headStyle()], ['Money out', headStyle('right')],
+        ['Split', headStyle()], ['Money in', headStyle('right')], ['Balance', headStyle('right')]], 20);
+      var running = 0;
+      var line = { bottom: ['thin', ROWLINE] };
+      if (!all.length) { var er = row([BLANK, ['No entries in this period', st({ font: { i: 1, color: GREY } })]]); mergeRow('B', 'H', er); }
+      all.forEach(function (rw) {
+        var x = rw.x, side = rw.side, id = catId(x, side), hex = colorOf(id, side);
+        var out = side === 'out' ? money(shareOf(x)) : '', inn = side === 'in' ? money(x.amount) : '';
+        running = money(running + (inn || 0) - (out || 0));
+        row([
+          ['', st({ fill: hex, border: line, flush: 1 })],
+          [excelDate(x.ts) + excelTime(x.ts), st({ font: { size: 12 }, fmt: DATETIME, border: line })],
+          [labelOf(id, side), st({ font: { b: 1, color: hex, size: 12 }, border: line })],
+          [[x.sub, x.note].filter(function (v) { return v; }).join(' · '), st({ font: { size: 12 }, border: line, wrap: 1 })],
+          [out, st({ font: { size: 12 }, fmt: MONEY, align: 'right', border: line })],
+          [side === 'out' ? splitText(x) : '', st({ font: { color: GREY, size: 10 }, border: line, wrap: 1 })],
+          [inn, st({ font: { color: GREEN, size: 12 }, fmt: MONEY, align: 'right', border: line })],
+          [running, st({ font: { b: 1, color: running < 0 ? RED : INK, size: 12 }, fmt: MONEY, align: 'right', border: line })]
+        ], (splitText(x).length > 46 || String(x.note || '').length > 26) ? 34 : 22);
+      });
+      var lastEntry = rows.length;
+      var tot = { top: ['medium', NAVY] };
+      var tr = row([BLANK, ['Total', st({ font: { b: 1, size: 12 }, border: tot })], ['', st({ border: tot })], ['', st({ border: tot })],
+        [totalOut, st({ font: { b: 1, color: RED, size: 12 }, fmt: MONEY, align: 'right', border: tot })], ['', st({ border: tot })],
+        [totalIn, st({ font: { b: 1, color: GREEN, size: 12 }, fmt: MONEY, align: 'right', border: tot })],
+        [bal, st({ font: { b: 1, color: bal < 0 ? RED : NAVY, size: 12 }, fmt: MONEY, align: 'right', border: tot })]], 24);
+      mergeRow('B', 'D', tr);
+
+      // ---- Write the sheet ----
+      var widths = [1.6, 24, 15, 24, 14, 40, 15, 15];
+      var filterRef = 'B' + headerRow + ':H' + Math.max(headerRow, lastEntry);
+      var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0" showGridLines="0"' + (sheets.length ? '' : ' tabSelected="1"') + '/></sheetViews>' +
+        '<sheetFormatPr defaultRowHeight="18"/><cols>' +
+        widths.map(function (w, i2) { return '<col min="' + (i2 + 1) + '" max="' + (i2 + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') +
+        '</cols><sheetData>' +
+        rows.map(function (rw, i2) {
+          return '<row r="' + (i2 + 1) + '"' + (rw.height ? ' ht="' + rw.height + '" customHeight="1"' : '') + '>' +
+            (rw.cells || []).map(function (c, j) { return c ? cell(i2 + 1, j, c[0], c[1]) : ''; }).join('') + '</row>';
+        }).join('') + '</sheetData>' +
+        (all.length ? '<autoFilter ref="' + filterRef + '"/>' : '') +
+        (merges.length ? '<mergeCells count="' + merges.length + '">' + merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join('') + '</mergeCells>' : '') +
+        '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>' +
+        '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
+      return { xml: xml, headerRow: headerRow, lastEntry: lastEntry, hasEntries: all.length > 0 };
+    }
+
+    // Dashboard for the whole period, then one tab per month with entries, newest month first.
+    var sheets = [];
+    var pd = new Date(per.start);
+    var heading = k === 'month' || k === 'lastmonth' ? MONTH_NAMES[pd.getMonth()] + ' ' + pd.getFullYear()
+      : k === 'week' ? 'Week of ' + pd.getDate() + ' ' + shortMonth(pd) + ' ' + pd.getFullYear()
+      : k === 'fy' || k === 'lastfy' ? (currencyInfo().fyStart ? 'Financial year ' : 'Year ') + fyName(per.fy, currencyInfo())
+      : k === 'all' ? 'All entries' : rangeText(per);
+    var dash = buildSheet(per, heading, label);
+    dash.name = 'Dashboard';
+    sheets.push(dash);
+    var both = everything.outs.concat(everything.ins);
+    if (coversSeveralMonths(k, per, both)) {
+      monthsWithEntries(both, per).forEach(function (ms) {
+        var d = new Date(ms), me = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+        var name = MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear();
+        var s = buildSheet({ start: Math.max(ms, per.start), end: Math.min(me, per.end) }, name, label + ' · ' + name);
+        s.name = name;
+        sheets.push(s);
+      });
+    }
+
     var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      '<numFmts count="4"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00;[Red]-&quot;$&quot;#,##0.00"/>' +
+      '<numFmts count="4"><numFmt numFmtId="164" formatCode="' + moneyFormat(true) + '"/>' +
       '<numFmt numFmtId="165" formatCode="ddd d mmm, h:mm AM/PM"/><numFmt numFmtId="167" formatCode="0%"/><numFmt numFmtId="168" formatCode="d mmm"/></numFmts>' +
       '<fonts count="' + fonts.length + '">' + fonts.join('') + '</fonts>' +
       '<fills count="' + fills.length + '">' + fills.join('') + '</fills>' +
@@ -1116,33 +1251,200 @@
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
       '<cellXfs count="' + xfs.length + '">' + xfs.join('') + '</cellXfs>' +
       '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
-    var defined = '<definedNames>' + (all.length ? '<definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Dashboard!$B$' + headerRow + ':$H$' + Math.max(headerRow, lastEntry) + '</definedName>' : '') +
-      '<definedName name="_xlnm.Print_Titles" localSheetId="0">Dashboard!$' + headerRow + ':$' + headerRow + '</definedName></definedNames>';
+    var defined = '<definedNames>' + sheets.map(function (s, i) {
+      var ref = "'" + s.name + "'!";
+      return (s.hasEntries ? '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">' + ref + '$B$' + s.headerRow + ':$H$' + Math.max(s.headerRow, s.lastEntry) + '</definedName>' : '') +
+        '<definedName name="_xlnm.Print_Titles" localSheetId="' + i + '">' + ref + '$' + s.headerRow + ':$' + s.headerRow + '</definedName>';
+    }).join('') + '</definedNames>';
+    var WS = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml';
     return [
       ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
         '<Default Extension="xml" ContentType="application/xml"/>' +
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        sheets.map(function (s, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="' + WS + '"/>'; }).join('') +
         '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
       ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
       ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-        '<sheets><sheet name="Dashboard" sheetId="1" r:id="rId1"/></sheets>' + defined + '</workbook>'],
+        '<bookViews><workbookView activeTab="0"/></bookViews><sheets>' +
+        sheets.map(function (s, i) { return '<sheet name="' + xmlEsc(s.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join('') +
+        '</sheets>' + defined + '</workbook>'],
       ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
-      ['xl/styles.xml', styles],
-      ['xl/worksheets/sheet1.xml', sheet]
-    ];
+        sheets.map(function (s, i) {
+          return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+        }).join('') +
+        '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+      ['xl/styles.xml', styles]
+    ].concat(sheets.map(function (s, i) { return ['xl/worksheets/sheet' + (i + 1) + '.xml', s.xml]; }));
   }
-  function reportBlob(k, label, now) { return zip(reportWorkbook(localData(), k, label, now)); }
+  function reportBlob(k, label, now, opts, data) { return zip(reportWorkbook(data || localData(), k, label || periodLabel(k, now, opts), now, opts)); }
 
-  // Takes over the app's "Download Excel file" button, so the report is this Overview sheet.
+  // ---------- Which data the report uses ----------
+  // This device, merged with the latest backup in the backup folder when the app may already read it
+  // (no permission prompt), so entries saved only in the backup are in the report too. Deletions made
+  // on this device stay deleted (the folder's sync record says what was there at the last save).
+  // A backup file picked in the report sheet is merged in as well.
+  async function folderBackupForReport() {
+    if (!supportsFolder) return null;
+    try {
+      var h = await loadHandle();
+      if (!h || !(await hasPermission(h, false))) return null;
+      var names = [monthFolder(), monthFolder(monthBefore())];
+      for (var i = 0; i < names.length; i++) {
+        var b = parseBackup(await readFolderFile(h, names[i]));
+        if (b) return { backup: b, base: baseFor('folder:' + names[i]) };
+      }
+    } catch (e) { console.warn('Backup folder not read for the report', e); }
+    return null;
+  }
+  async function reportData(pickedBackup) {
+    var data = localData();
+    var folder = await folderBackupForReport();
+    if (folder) data = mergeData(data, folder.backup, folder.base).data;
+    if (pickedBackup) data = mergeData(data, pickedBackup, {}).data;
+    return data;
+  }
+
+  // ---------- Period picker in the Excel sheet ----------
+  // The app's sheet offers 4 periods. Replace that list with every period above, two per row,
+  // with From / To dates for custom and an optional backup file to build the report from.
+  var picker = { k: null, from: '', to: '', file: null, fileName: '' };
+  var PICKER_CSS = '.slr-opts{display:grid!important;grid-template-columns:1fr 1fr;gap:8px}' +
+    '.slr-opts .opt{flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;min-width:0;padding:10px 12px}' +
+    '.slr-opts .opt span{line-height:1.25}.slr-opts .opt small{font-size:12px;line-height:1.3;overflow-wrap:anywhere}' +
+    '.slr-opts .opt[data-k=custom]{grid-column:1/-1}' +
+    '.slr-dates{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px}.slr-dates[hidden]{display:none}' +
+    '.slr-dates label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--muted);min-width:0}' +
+    '.slr-dates input{border:1.5px solid var(--line);border-radius:12px;padding:10px;font:inherit;font-size:15px;background:var(--surface);color:var(--ink,inherit);width:100%;min-width:0;box-sizing:border-box}' +
+    '.slr-file{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}' +
+    '.slr-file button{border:0;background:none;color:var(--accent);font-weight:600;padding:4px 0;text-decoration:underline;cursor:pointer;font:inherit;font-size:13px}';
+  function todayText(d) { d = d || new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function pickerOpts() { return { from: picker.from, to: picker.to }; }
+  function countText(k, entries, now) {
+    var per = reportPeriod(k, now, pickerOpts());
+    if (!per) return 'Pick dates';
+    var inP = function (x) { var ts = Number(x.ts); return ts >= per.start && ts < per.end; };
+    var o = entries.outs.filter(inP), n = o.length + entries.ins.filter(inP).length;
+    return n + (n === 1 ? ' entry' : ' entries') + ' · ' + cur(o.reduce(function (t, x) { return t + shareOf(x); }, 0));
+  }
+  function buildPicker(appOpts) {
+    var now = new Date(), entries = reportEntries(localData());
+    if (!picker.k) {
+      var was = appOpts.querySelector('.opt[aria-pressed="true"]');
+      picker.k = was && REPORT_KEYS.indexOf(was.getAttribute('data-k')) >= 0 ? was.getAttribute('data-k') : 'month';
+    }
+    if (!picker.from) { picker.from = todayText(new Date(now.getFullYear(), now.getMonth(), 1)); picker.to = todayText(now); }
+    var box = document.createElement('div');
+    box.className = 'opts slr-opts';
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', 'Report period');
+    REPORT_KEYS.forEach(function (k) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'opt'; b.setAttribute('data-k', k);
+      b.setAttribute('aria-pressed', String(k === picker.k));
+      var s = document.createElement('span'); s.textContent = periodLabel(k, now, k === 'custom' ? null : pickerOpts()).replace(/(\d)-(\d)/g, '$1\u2011$2');   // keep 2026-27 on one line
+      b.appendChild(s);
+      var range = k === 'custom' || k === 'all' ? '' : rangeText(reportPeriod(k, now));
+      if (range) {
+        var r = document.createElement('small'); r.className = 'slr-range'; r.textContent = range; b.appendChild(r);
+      }
+      var c = document.createElement('small'); c.className = 'num'; c.textContent = countText(k, entries, now); b.appendChild(c);
+      box.appendChild(b);
+      if (k === 'custom') {
+        var dates = document.createElement('div');
+        dates.className = 'slr-dates'; dates.hidden = picker.k !== 'custom';
+        [['From', 'slr-from', picker.from], ['To', 'slr-to', picker.to]].forEach(function (f) {
+          var l = document.createElement('label'), i = document.createElement('input');
+          l.textContent = f[0]; i.type = 'date'; i.id = f[1]; i.value = f[2]; i.max = todayText(new Date(now.getFullYear() + 1, 11, 31));
+          l.appendChild(i); dates.appendChild(l);
+        });
+        box.appendChild(dates);
+      }
+    });
+    var file = document.createElement('div');
+    file.className = 'slr-file';
+    var note = document.createElement('span');
+    note.id = 'slr-file-note';
+    note.textContent = picker.file ? 'Also using ' + picker.fileName + ' (' + records(countIn(picker.file.data)) + ')' : 'Report uses this device and your backup folder.';
+    var pick = document.createElement('button');
+    pick.type = 'button'; pick.id = 'slr-file-pick';
+    pick.textContent = picker.file ? 'Stop using it' : 'Add a backup file…';
+    var input = document.createElement('input');
+    input.type = 'file'; input.id = 'slr-file-in'; input.accept = '.json,application/json'; input.hidden = true;
+    file.append(note, pick, input);
+    box.appendChild(file);
+    return box;
+  }
+  function refreshPicker() {
+    var mine = document.querySelector('#sheetRoot .slr-opts');
+    if (mine) mine.replaceWith(buildPicker(mine));
+  }
+  function watchSheet() {
+    var root = document.getElementById('sheetRoot');
+    if (!root || watchSheet.on) return;
+    watchSheet.on = true;
+    var style = document.createElement('style'); style.id = 'slr-picker-css'; style.textContent = PICKER_CSS; document.head.appendChild(style);
+    var swap = function () {
+      if (!document.getElementById('doExport')) { picker.k = null; picker.from = ''; picker.to = ''; picker.file = null; picker.fileName = ''; return; }
+      var app = root.querySelector('.opts:not(.slr-opts)');
+      if (app && app.querySelector('.opt[data-k="week"]')) app.replaceWith(buildPicker(app));
+    };
+    new MutationObserver(swap).observe(root, { childList: true, subtree: true });
+    swap();
+  }
+  // Clicks and changes inside the picker are handled here and kept from the app, which would
+  // otherwise redraw its own 4-period list.
+  function onPickerEvent(e) {
+    var box = e.target && e.target.closest && e.target.closest('.slr-opts');
+    if (!box) return;
+    e.stopImmediatePropagation();
+    if (e.type === 'click') {
+      var opt = e.target.closest('.opt');
+      if (opt) {
+        e.preventDefault();
+        picker.k = opt.getAttribute('data-k');
+        [].forEach.call(box.querySelectorAll('.opt'), function (b) { b.setAttribute('aria-pressed', String(b === opt)); });
+        var dates = box.querySelector('.slr-dates');
+        if (dates) dates.hidden = picker.k !== 'custom';
+        if (picker.k === 'custom') { var f = document.getElementById('slr-from'); if (f) f.focus(); }
+        return;
+      }
+      if (e.target.closest('#slr-file-pick')) {
+        e.preventDefault();
+        if (picker.file) { picker.file = null; picker.fileName = ''; refreshPicker(); return; }
+        var inp = document.getElementById('slr-file-in');
+        if (inp) inp.click();
+      }
+      return;
+    }
+    if (e.target.id === 'slr-from' || e.target.id === 'slr-to') {
+      picker[e.target.id === 'slr-from' ? 'from' : 'to'] = e.target.value;
+      var c = box.querySelector('.opt[data-k="custom"] small.num');
+      if (c) c.textContent = countText('custom', reportEntries(localData()), new Date());
+      return;
+    }
+    if (e.type === 'change' && e.target.id === 'slr-file-in') {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      file.text().then(function (text) {
+        var b = parseBackup(text);
+        if (!b) { appToast('That file is not a Spenderrr backup'); return; }
+        picker.file = b; picker.fileName = file.name;
+        refreshPicker();
+      }).catch(function () { appToast('Could not read that file'); });
+    }
+  }
+  ['click', 'input', 'change', 'keydown'].forEach(function (t) {
+    window.addEventListener(t, function (e) { if (t !== 'keydown' || e.key === 'Enter') onPickerEvent(e); }, true);
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchSheet); else watchSheet();
+
+  // Takes over the app's "Download Excel file" button, so the report is this Dashboard workbook.
   function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function appToast(text) {
     var t = document.getElementById('toast');
@@ -1151,6 +1453,7 @@
     clearTimeout(appToast.timer);
     appToast.timer = setTimeout(function () { t.hidden = true; }, 2600);
   }
+  function fileSafe(s) { return String(s).replace(/[\\/:*?"<>|]+/g, '-'); }
   async function downloadReport(e) {
     var btn = e.target && e.target.closest && e.target.closest('#doExport');
     if (!btn) return;
@@ -1158,10 +1461,20 @@
     e.stopImmediatePropagation();
     var picked = document.querySelector('#sheetRoot .opt[aria-pressed="true"]');
     var k = picked ? picked.getAttribute('data-k') : 'all';
-    var label = picked ? (picked.querySelector('span') || picked).textContent.trim() : 'All entries';
-    var name = 'Spend report - ' + label + ' - ' + localDate(Date.now()) + '.xlsx', blob;
-    try { blob = reportBlob(k, label); } catch (err) { appToast('Could not make the report: ' + (err && err.message ? err.message : err)); return; }
+    if (REPORT_KEYS.indexOf(k) < 0) k = 'all';
+    var opts = k === 'custom' ? pickerOpts() : null;
+    if (k === 'custom' && !reportPeriod(k, new Date(), opts)) {
+      appToast(!dayFromText(opts.from) || !dayFromText(opts.to) ? 'Pick both a From and a To date' : 'The From date must be on or before the To date');
+      return;
+    }
+    var label = periodLabel(k, new Date(), opts);
+    var name = 'Spend report - ' + fileSafe(label) + ' - ' + localDate(Date.now()) + '.xlsx', blob;
     var file = null;
+    try {
+      // iPhone has no backup folder, so nothing is awaited there and the share sheet still opens from the tap.
+      var data = supportsFolder || picker.file ? await reportData(picker.file) : localData();
+      blob = reportBlob(k, label, undefined, opts, data);
+    } catch (err) { appToast('Could not make the report: ' + (err && err.message ? err.message : err)); return; }
     try { file = new File([blob], name, { type: XLSX_MIME }); } catch (err) { file = null; }
     if (isIOS() && file && navigator.canShare && navigator.share) {
       try {
@@ -2188,6 +2501,7 @@
     version: VERSION, backupNow: function () { return runBackup('tap'); }, runAuto: function () { return runBackup('auto'); },
     runChange: function () { return runBackup('change'); }, mergeData: mergeData, mergeStores: mergeStores,
     fingerprints: fingerprints, parseBackup: parseBackup, reportBlob: reportBlob,
+    reportPeriod: reportPeriod, periodLabel: periodLabel, reportData: reportData,
     backupText: backupText, excelBlob: excelBlob,
     restore: restore, isDue: isDue, check: check, records: localRecords, compareCounts: compareCounts, monthFolder: monthFolder
   };

@@ -1,4 +1,4 @@
-# Netlify headers for Spenderrr (version 2026.10.28)
+# Netlify headers for Spenderrr (version 2026.10.29)
 # Scripts: only the app's own files, Google sign-in, and the two scripts inside index.html,
 # allowed by their exact fingerprint (sha256). If index.html's scripts change, run tests/update_script_hashes.py, then the tests:
 # they recompute these fingerprints and fail if this file is out of date.

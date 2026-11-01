@@ -722,8 +722,9 @@
       [].forEach.call(root.querySelectorAll('p'), function (p) {
         if (/^The workbook has /.test(p.textContent) && !p.__spx) {
           p.__spx = true;
-          p.textContent = 'One colour-coded Dashboard sheet: money in, money out and balance, where the money went, ' +
-            'week-by-week totals, and every entry with date, time, split and money in (with filter buttons).';
+          p.textContent = 'A colour-coded Dashboard sheet: money in, money out and balance, where the money went, ' +
+            'week-by-week totals, and every entry with date, time, split and money in (with filter buttons). ' +
+            'Periods longer than a month add one tab per month with entries, newest first.';
         }
       });
     }).observe(root, { childList: true, subtree: true });
