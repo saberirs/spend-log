@@ -1,0 +1,97 @@
+# Release backups and branch clean-up
+#
+# On every deploy (a push to develop, which Netlify publishes as production):
+#   saves the version that was live just before as backup/develop-YYYY-MM-DD
+#   (US Eastern date; the first deploy of a day keeps that day's backup).
+#
+# Every day:
+#   - deletes backup/* branches older than 2 days, but always keeps the newest
+#     backup/develop-* so there is one copy of a previous release to go back to;
+#   - deletes finished branches (feature/*, fix/*, docs/*, chore/*, release/*, sync/*)
+#     whose every commit is already in develop (or main) and whose last commit is over 2 days old.
+#
+# It never touches develop, staging, main, or a branch with work that is not in develop.
+# Run it by hand from the Actions tab (Release backups -> Run workflow).
+name: Release backups
+
+on:
+  push:
+    branches: [develop]
+  schedule:
+    - cron: '17 13 * * *'      # every day around 9 AM US Eastern
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-backups
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save the previous production version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const name = `backup/develop-${day}`;
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `heads/${name}` });
+              core.info(`${name} already exists (an earlier deploy today); keeping it.`);
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              await github.rest.git.createRef({ owner, repo, ref: `refs/heads/${name}`, sha: context.payload.before });
+              core.info(`Saved ${context.payload.before.slice(0, 7)} as ${name}.`);
+            }
+
+  cleanup:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old backups and finished branches
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const KEEP = ['develop', 'staging', 'main'];
+            const FINISHED = /^(feature|fix|docs|chore|release|sync)\//;
+            const DAYS = 2, now = Date.now(), old = (t) => now - t > DAYS * 86400000;
+            const branches = await github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 });
+            const lastCommit = async (b) => {
+              const c = await github.rest.repos.getCommit({ owner, repo, ref: b.commit.sha });
+              return new Date(c.data.commit.committer.date).getTime();
+            };
+            const remove = async (name, why) => {
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${name}` });
+              core.info(`Deleted ${name} (${why}).`);
+            };
+
+            // Backups: by the date in the name (backup/develop-2026-10-31), else the last commit date.
+            const backups = [];
+            for (const b of branches.filter((x) => x.name.startsWith('backup/'))) {
+              const m = /(\d{4}-\d{2}-\d{2})$/.exec(b.name);
+              const when = m ? new Date(`${m[1]}T23:59:59-04:00`).getTime() : await lastCommit(b);
+              backups.push({ name: b.name, when });
+            }
+            const newestDevelop = backups.filter((b) => b.name.startsWith('backup/develop-')).sort((a, b) => b.when - a.when)[0];
+            for (const b of backups) {
+              if (newestDevelop && b.name === newestDevelop.name) { core.info(`Keeping ${b.name} (newest backup).`); continue; }
+              if (old(b.when)) await remove(b.name, `backup older than ${DAYS} days`);
+            }
+
+            // Finished branches: everything already in develop, untouched for 2 days.
+            for (const b of branches) {
+              if (KEEP.includes(b.name) || !FINISHED.test(b.name)) continue;
+              let ahead = Infinity;
+              for (const base of ['develop', 'main']) {      // sync/* branches are merged into main
+                const cmp = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${b.name}` });
+                ahead = Math.min(ahead, cmp.data.ahead_by);
+              }
+              if (ahead > 0) { core.info(`Keeping ${b.name} (${ahead} commits not released).`); continue; }
+              if (old(await lastCommit(b))) await remove(b.name, 'merged into develop');
+            }
