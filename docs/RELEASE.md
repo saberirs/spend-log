@@ -29,6 +29,9 @@ fingerprints: `python3 tests/update_script_hashes.py`.
 1. Branch from `develop`, make the change, raise the version.
 2. Run every test suite (see the README) — all must pass.
 3. Open a pull request into `staging`, check it on the test link on Android, iPhone and desktop.
+   Title the pull request into `develop` with the version, e.g. `Release 2026.10.30: <what changed>`.
+   Netlify names the production deploy after this title, and the **Release title check**
+   (`.github/workflows/pr-title-version.yml`) blocks the merge if the version from `index.html` is missing.
 4. Merge into `develop`; Netlify deploys it. Phones pick it up the next time the app opens online.
 5. `main` is updated from `develop` automatically (see below) — never commit to `main` directly.
 
