@@ -1,4 +1,4 @@
-# Netlify headers for Spenderrr (version 2026.10.30)
+# Netlify headers for Spenderrr (version 2026.11.1)
 # Scripts: only the app's own files, Google sign-in, and the two scripts inside index.html,
 # allowed by their exact fingerprint (sha256). If index.html's scripts change, run tests/update_script_hashes.py, then the tests:
 # they recompute these fingerprints and fail if this file is out of date.
@@ -29,3 +29,18 @@
 /t/*
   Cache-Control: no-store
   Content-Type: text/plain; charset=utf-8
+
+# App scripts are linked as name.js?v=<version>, so each release has a new address.
+# Phones can keep them for a year. Always bump ?v= in index.html when a script changes.
+/backup.js
+  Cache-Control: public, max-age=31536000, immutable
+/ledger.js
+  Cache-Control: public, max-age=31536000, immutable
+/whatsapp.js
+  Cache-Control: public, max-age=31536000, immutable
+/reminders.js
+  Cache-Control: public, max-age=31536000, immutable
+
+# Excel library (SheetJS) never changes under this name: keep it for a year
+/xlsx.full.min.js
+  Cache-Control: public, max-age=31536000, immutable
