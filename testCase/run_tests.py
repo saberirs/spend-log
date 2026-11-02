@@ -2666,7 +2666,22 @@ def old_saved_copy_updates_and_works_offline(b, srv):
 def offline_file_leaves_google_alone(b, srv):
     sw = read('sw.js')
     assert 'url.origin !== self.location.origin' in sw, 'sw.js must not handle Google or other sites'
-    assert "fetch(req, { cache: 'no-store' })" in sw, 'sw.js must load the latest version first'
+    assert "fetch(url, { cache: 'no-store' })" in sw, 'sw.js must save the newest files when a release installs'
+    assert "fetch(req, { cache: 'no-cache' })" in sw and 'cache.put(key' in sw, \
+        'sw.js must fetch the latest version in the background for the next open'
+
+
+@test
+def app_opens_fast(b, srv):
+    html = read('index.html')
+    assert '<script src="xlsx.full.min.js" defer></script>' in html, \
+        'The Excel library must not hold up opening the app (load it with defer)'
+    headers = read('_headers')
+    for f in ('/xlsx.full.min.js', '/backup.js', '/ledger.js', '/whatsapp.js', '/reminders.js'):
+        assert re.search(re.escape(f) + r'\n  Cache-Control: public, max-age=31536000, immutable', headers), \
+            f + ' should be kept on the phone (long cache)'
+    for f in ('backup.js', 'ledger.js', 'whatsapp.js', 'reminders.js'):
+        assert re.search(re.escape(f) + r'\?v=', html), f + ' must be linked with ?v=<version>'
 
 
 # --------------------------------------------------------------------------

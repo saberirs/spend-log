@@ -1,13 +1,15 @@
 /*
  * Spenderrr – offline support (service worker)
- * Version 2026.10.30
+ * Version 2026.11.1
  *
- * Network first: when online, every open gets the latest version from Netlify,
- * so Android, iPhone and desktop always run the same release.
- * When offline, it falls back to the last saved copy so the app still opens.
+ * Saved copy first: the app opens instantly from the copy saved on the device,
+ * and the latest version is fetched from Netlify in the background for next time.
+ * A new release also changes this file, so the browser installs the new copy
+ * right away (see install below); every device is on the new release by the next open.
+ * When offline, the saved copy is all it needs.
  * Google sign-in / Drive and other outside addresses are never touched.
  */
-var CACHE = 'spendlog-2026.10.30';
+var CACHE = 'spendlog-2026.11.1';
 var APP_FILES = [
   '/',
   '/index.html',
@@ -69,17 +71,22 @@ self.addEventListener('fetch', function (event) {
   var key = url.pathname === '/' ? '/index.html' : url.pathname;
 
   event.respondWith(
-    fetch(req, { cache: 'no-store' }).then(function (res) {
-      if (res.ok && res.type === 'basic' && !res.redirected) {
-        var copy = res.clone();
-        caches.open(CACHE).then(function (cache) { cache.put(key, copy); });
-      }
-      return res;
-    }).catch(function () {
-      return caches.open(CACHE).then(function (cache) {
-        return cache.match(key)
-          .then(function (hit) { return hit || (isPage ? cache.match('/index.html') : null); })
-          .then(function (hit) { return hit || new Response('Offline', { status: 503, statusText: 'Offline' }); });
+    caches.open(CACHE).then(function (cache) {
+      // Fetch the latest copy in the background and save it for the next open.
+      var fresh = fetch(req, { cache: 'no-cache' }).then(function (res) {
+        if (res.ok && res.type === 'basic' && !res.redirected) cache.put(key, res.clone());
+        return res;
+      });
+      return cache.match(key).then(function (hit) {
+        if (hit) {
+          event.waitUntil(fresh.catch(function () { /* offline: keep the saved copy */ }));
+          return hit;                                      // open instantly from the saved copy
+        }
+        // Not saved yet (first visit): wait for the network, fall back to the app page when offline.
+        return fresh.catch(function () {
+          return (isPage ? cache.match('/index.html') : Promise.resolve(null))
+            .then(function (h) { return h || new Response('Offline', { status: 503, statusText: 'Offline' }); });
+        });
       });
     })
   );
