@@ -27,7 +27,8 @@ fingerprints: `python3 tests/update_script_hashes.py`.
 ## Checklist
 
 1. Branch from `develop`, make the change, raise the version.
-2. Run every test suite (see the README) — all must pass.
+2. Run every test suite (see the README) — all must pass, including `testCase/test_security.py`
+   (security headers, restore-file checks, no customer data leaving the device).
 3. Open a pull request into `staging`, check it on the test link on Android, iPhone and desktop.
    Title the pull request into `develop` with the version, e.g. `Release 2026.10.30: <what changed>`.
    Netlify names the production deploy after this title, and the **Release title check**

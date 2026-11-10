@@ -1,4 +1,4 @@
-# Netlify headers for Spenderrr (version 2026.11.1)
+# Netlify headers for Spenderrr (version 2026.11.2)
 # Scripts: only the app's own files, Google sign-in, and the two scripts inside index.html,
 # allowed by their exact fingerprint (sha256). If index.html's scripts change, run tests/update_script_hashes.py, then the tests:
 # they recompute these fingerprints and fail if this file is out of date.
@@ -7,15 +7,19 @@
 #   www.googleapis.com   -> Google Drive API (save / restore the backup file)
 # Referrer-Policy changed from no-referrer: Google sign-in needs to know which site is asking.
 # It now sends only the site address (https://spend-log-v1.netlify.app) to other sites, never the full page URL.
+# 2026.11.2: HSTS covers sub-addresses too; other sites may not embed the app's files (Cross-Origin-Resource-Policy);
+# USB and ad-interest tracking (browsing-topics) are switched off. Project files are blocked in _redirects.
 
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-H15GkzhZ5WVHZeVoStlhN2bH0mXWj77dVy1W8r9uNzY=' 'sha256-CCWu+mGYQkFM3r+nfYOHaMD4QvN0pPBC0SLyvAXYNWQ=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com; frame-src https://accounts.google.com/gsi/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
-  Strict-Transport-Security: max-age=31536000
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Resource-Policy: same-origin
+  X-Permitted-Cross-Domain-Policies: none
 
 # Always check for a new offline file so updates reach every device
 /sw.js

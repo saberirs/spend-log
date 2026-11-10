@@ -2548,6 +2548,48 @@
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) { /* ignore */ }
   }
 
+  // ---------- Settings > Restore (the app's own backup file) ----------
+  // The app's "Restore" button in Settings reads a "Spend Log backup <date>.json" file and adds what is
+  // in it. That file could be edited or come from someone else, so it is checked here first, with the
+  // same rules as every other restore: only expenses, messages, friends, settle-ups and the currency are
+  // kept, each in the shape the app expects; anything broken or unknown is dropped before the app sees it.
+  var RESTORE_CURRENCIES = ['USD', 'INR', 'EUR'];
+  function cleanList(v, check, extra) {
+    return (Array.isArray(v) ? v : []).slice(0, MAX_ITEMS).map(check).filter(function (x) { return x && (!extra || extra(x)); });
+  }
+  function cleanAppBackup(text) {
+    if (typeof text !== 'string' || text.length > MAX_BACKUP_BYTES) return null;
+    var b = plainObject(text);
+    if (!b || !Array.isArray(b.expenses)) return null;
+    var out = {
+      expenses: cleanList(b.expenses, CHECK_ITEM.e, function (x) { return x.amount > 0; }),
+      messages: cleanList(b.messages, CHECK_ITEM.m, function (x) { return okId(x.id); }),
+      people: cleanList(b.people, CHECK_ITEM.p).map(function (x) { return { name: cleanText(x.name, 30), addedAt: num(x.addedAt) === null ? Date.now() : num(x.addedAt) }; })
+        .filter(function (x) { return x.name; }),
+      settlements: cleanList(b.settlements, CHECK_ITEM.s, function (x) { return x.amt > 0; })
+    };
+    if (RESTORE_CURRENCIES.indexOf(b.currency) >= 0) out.currency = b.currency;
+    return JSON.stringify(out);
+  }
+  function guardAppRestore() {
+    // Runs before the app's own handler (capture phase), then hands it the checked copy.
+    window.addEventListener('change', function (ev) {
+      var input = ev.target;
+      if (!input || input.id !== 'restoreIn' || input.__slbChecked) return;
+      var file = input.files && input.files[0];
+      if (!file) return;
+      ev.stopImmediatePropagation();
+      var handOver = function (text) {
+        var clean = new File([text], file.name || 'backup.json', { type: 'application/json' });
+        input.__slbChecked = true;
+        try { if (typeof input.onchange === 'function') input.onchange({ target: { files: [clean] } }); }
+        finally { input.__slbChecked = false; input.value = ''; }
+      };
+      if (file.size > MAX_BACKUP_BYTES) { handOver('{}'); return; }   // the app then says it isn't a backup
+      file.text().then(function (t) { handOver(cleanAppBackup(t) || '{}'); }, function () { handOver('{}'); });
+    }, true);
+  }
+
   // ---------- Daily check-in ----------
   // Once a day the app asks the site for a tiny empty file, so the developer can count how many devices
   // use Spenderrr (/t/active) and how many back up to Google Drive (/t/drive-active) in Netlify's logs.
@@ -2567,6 +2609,7 @@
   }
 
   function start() {
+    guardAppRestore();
     dailyCheckIn();
     document.addEventListener('visibilitychange', function () { if (!document.hidden) dailyCheckIn(); });
     watchChanges();
@@ -2588,7 +2631,7 @@
   window.SpendLogBackup = {
     version: VERSION, backupNow: function () { return runBackup('tap'); }, runAuto: function () { return runBackup('auto'); },
     runChange: function () { return runBackup('change'); }, mergeData: mergeData, mergeStores: mergeStores,
-    fingerprints: fingerprints, parseBackup: parseBackup, reportBlob: reportBlob,
+    fingerprints: fingerprints, parseBackup: parseBackup, cleanAppBackup: cleanAppBackup, reportBlob: reportBlob,
     reportPeriod: reportPeriod, periodLabel: periodLabel, reportData: reportData,
     backupText: backupText, excelBlob: excelBlob,
     restore: restore, isDue: isDue, check: check, records: localRecords, compareCounts: compareCounts, monthFolder: monthFolder
