@@ -34,7 +34,7 @@ import tempfile
 import threading
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
@@ -66,7 +66,7 @@ SIZES = {
 
 
 # --------------------------------------------------------------------------
-# Local web server that behaves like Netlify (applies the _headers file)
+# Local web server that behaves like Netlify (applies the _headers and _redirects files)
 # --------------------------------------------------------------------------
 def parse_headers_file(path):
     rules, current = [], None
@@ -82,6 +82,18 @@ def parse_headers_file(path):
         elif current is not None and ':' in line:
             k, v = line.strip().split(':', 1)
             current['headers'][k.strip()] = v.strip()
+    return rules
+
+
+def parse_redirects_file(path):
+    """Netlify _redirects lines: <from> <to> <status>[!]. Only forced 404 rules are used by the app."""
+    rules = []
+    if not os.path.exists(path):
+        return rules
+    for raw in open(path, encoding='utf-8'):
+        parts = raw.split('#', 1)[0].split()
+        if len(parts) >= 3:
+            rules.append({'pattern': parts[0], 'to': parts[1], 'status': int(parts[2].rstrip('!'))})
     return rules
 
 
@@ -118,6 +130,15 @@ class AppServer:
 
             def do_GET(self):
                 p = urlparse(self.path).path
+                for rule in parse_redirects_file(os.path.join(server.root, '_redirects')):
+                    if rule['status'] == 404 and pattern_matches(rule['pattern'], p):
+                        body = open(os.path.join(server.root, rule['to'].lstrip('/')), 'rb').read()
+                        self.send_response(404)
+                        self.send_header('Content-Type', 'text/html; charset=utf-8')
+                        self.send_header('Content-Length', str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                        return
                 local = self.translate_path(self.path)
                 if not os.path.exists(local):   # files not in the test folder (library, icons)
                     if p.endswith('xlsx.full.min.js'):
@@ -1014,7 +1035,9 @@ def travel_replaces_transport_in_the_app(b, srv):
     d.add_expense(2.75, 'Travel')
     saved = d.ev("JSON.parse(localStorage.getItem('spendlog.v1')).e.map(x => x.cat)")
     assert saved == ['transport'], 'Travel must keep the saved id "transport" so old entries match: %s' % saved
-    set_entries(d, [('transport', 18, '2026-10-20 17:45', 'Uber (saved before the rename)')])
+    # A recent date (yesterday), so the entry is on the Recent screen whatever day the tests run
+    yday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d') + ' 17:45'
+    set_entries(d, [('transport', 18, yday, 'Uber (saved before the rename)')])
     texts = []
     for view in ['recent', 'week', 'month']:
         d.page.click('button[data-view=%s]' % view)

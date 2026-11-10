@@ -1,0 +1,16 @@
+# Netlify redirect rules for Spenderrr
+# The whole repository folder is published, but only the app's own files should be reachable.
+# Project files (tests, docs, build script, package lists, GitHub settings) answer "404 Not found".
+# "404!" forces the 404 even though the file exists. The app itself never links to any of these.
+
+/testCase/*         /404.html  404!
+/tests/*            /404.html  404!
+/docs/*             /404.html  404!
+/.github/*          /404.html  404!
+/build.py           /404.html  404!
+/package.json       /404.html  404!
+/package-lock.json  /404.html  404!
+/README.md          /404.html  404!
+/.gitignore         /404.html  404!
+/_headers           /404.html  404!
+/_redirects         /404.html  404!

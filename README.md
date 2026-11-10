@@ -65,10 +65,11 @@ fixed and Google Drive simulated:
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
-| `testCase/run_tests.py` | 74 | Release checks, layout, backups, Drive, restore, merge rules, splitting, WhatsApp, Excel, offline updates |
+| `testCase/run_tests.py` | 77 | Release checks, layout, backups, Drive, restore, merge rules, splitting, WhatsApp, Excel, offline updates |
 | `testCase/test_reminders.py` | 22 | Bill reminders, calendar files, report cards |
 | `testCase/test_reports.py` | 21 | Report periods, financial year by currency, month tabs, backups as a data source |
 | `testCase/test_payment_mode.py` | 9 | Payment modes in forms, backup, merge and Excel |
+| `testCase/test_security.py` | 7 | Restore-file checks, security headers, project files not served, customer data never leaves the device |
 
 ```bash
 pip install playwright openpyxl && python -m playwright install chromium
