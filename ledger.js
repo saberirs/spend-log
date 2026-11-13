@@ -119,25 +119,33 @@
 
   // ---------- Totals ----------
   function round(n) { return Math.round(n * 100) / 100; }
+  // Totals add whole cents, so the result is exact and the same whatever order the entries are in
+  // (decimals added in a different order can differ in the last digit).
+  function cents(v) { v = Number(v); return isFinite(v) ? Math.round(v * 100) : 0; }
+  // Oldest first; same time -> created first -> id, so lists and reports keep one fixed order.
+  function byTime(a, b) {
+    return (Number(a.ts) || 0) - (Number(b.ts) || 0) || (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0) ||
+      (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0);
+  }
   function monthRange(d) {
     return [new Date(d.getFullYear(), d.getMonth(), 1).getTime(), new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()];
   }
   // Money out counts your share of split bills, like the app's own totals.
   function moneyOut(start, end) {
-    return round(debitEntries().reduce(function (t, x) {
+    return debitEntries().reduce(function (t, x) {
       var ts = Number(x && x.ts);
       if (!(ts >= start && ts < end)) return t;
       var v = x.split && x.split.my !== undefined && x.split.my !== null ? Number(x.split.my) : Number(x.amount);
-      return t + (isFinite(v) ? v : 0);
-    }, 0));
+      return t + cents(v);
+    }, 0) / 100;
   }
   function moneyIn(start, end) {
-    return round(credits().reduce(function (t, x) { var ts = Number(x.ts); return ts >= start && ts < end ? t + Number(x.amount) : t; }, 0));
+    return credits().reduce(function (t, x) { var ts = Number(x.ts); return ts >= start && ts < end ? t + cents(x.amount) : t; }, 0) / 100;
   }
   function summary(d) {
     d = d || new Date();
     var r = monthRange(d), i = moneyIn(r[0], r[1]), o = moneyOut(r[0], r[1]);
-    return { month: MONTHS[d.getMonth()] + ' ' + d.getFullYear(), in: i, out: o, balance: round(i - o) };
+    return { month: MONTHS[d.getMonth()] + ' ' + d.getFullYear(), in: i, out: o, balance: (cents(i) - cents(o)) / 100 };
   }
   // Amount with the currency picked in the app's settings ($, ₹ or €).
   function money(n) {
@@ -493,7 +501,7 @@
     cats.onclick = function () { closeSheet('spx-list'); openManage(); };
     top.append(add, cats);
     box.appendChild(top);
-    var list = credits().sort(function (a, b) { return b.ts - a.ts || b.createdAt - a.createdAt; });
+    var list = credits().sort(function (a, b) { return byTime(b, a); });
     if (!list.length) { box.appendChild(el('p', { class: 'help', id: 'spxEmpty' }, 'No money in yet. Add salary, interest, refunds and more.')); return; }
     var month = null, wrap = null;
     list.forEach(function (x) {
@@ -759,7 +767,7 @@
     wb.__spxMoneyIn = true;
     var per = reportPeriod();
     var list = credits().filter(function (x) { return Number(x.ts) >= per.start && Number(x.ts) < per.end; })
-      .sort(function (a, b) { return a.ts - b.ts; });
+      .sort(byTime);
     var rows = [['Date', 'Time', 'Day', 'Category', 'Note', 'Amount']];
     list.forEach(function (x) { rows.push([isoDay(x.ts), clock(x.ts), DAY_NAMES[new Date(x.ts).getDay()], creditCat(x.cat).label, x.note || '', round(Number(x.amount))]); });
     if (!list.length) rows.push(['', '', '', 'No money in for this period', '', 0]);
