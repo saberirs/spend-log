@@ -73,7 +73,8 @@
     (data.s || []).forEach(function (s) {
       if (s && s.name === name) payments.push({ ts: Number(s.ts) || 0, amt: Number(s.amt) || 0, dir: s.dir });
     });
-    function byTime(a, b) { return a.ts - b.ts; }
+    // Same time -> by amount, so the summary lists entries in the same order on every phone.
+    function byTime(a, b) { return a.ts - b.ts || a.amt - b.amt || (String(a.dir || '') < String(b.dir || '') ? -1 : String(a.dir || '') > String(b.dir || '') ? 1 : 0); }
     owesMe.sort(byTime); iOwe.sort(byTime); payments.sort(byTime);
     var sum = function (list) { return list.reduce(function (t, i) { return t + i.amt; }, 0); };
     var paidIn = sum(payments.filter(function (p) { return p.dir === 'in'; }));

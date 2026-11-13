@@ -82,6 +82,11 @@
     var c = currency(), v = Math.abs(Number(n) || 0);
     return (n < 0 ? '−' : '') + c.sym + v.toLocaleString(c.loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  // Soonest due first; same day -> by name, then id, so the list never reshuffles.
+  function byDue(x, y) {
+    var na = String(x.b.name).toLowerCase(), nb = String(y.b.name).toLowerCase();
+    return x.st.due - y.st.due || (na < nb ? -1 : na > nb ? 1 : 0) || (x.b.id < y.b.id ? -1 : x.b.id > y.b.id ? 1 : 0);
+  }
   function round(n) { return Math.round(n * 100) / 100; }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
@@ -115,7 +120,7 @@
     return entries().filter(function (x) {
       if (!x || x.cat !== bill.cat || !isFinite(Number(x.ts))) return false;
       return bill.sub ? x.sub === bill.sub : !!(nm && String(x.note || '').toLowerCase().indexOf(nm) >= 0);
-    }).sort(function (x, y) { return Number(x.ts) - Number(y.ts); });
+    }).sort(function (x, y) { return Number(x.ts) - Number(y.ts) || (String(x.id) < String(y.id) ? -1 : String(x.id) > String(y.id) ? 1 : 0); });
   }
   function payFor(bill, due, list, used) {
     if ((bill.paid || {})[ymd(due)]) return true;
@@ -193,7 +198,7 @@
       else if (ts >= pa && ts < a) prev += v;
     });
     var cats = Object.keys(byCat).map(function (c) { return { id: c, label: catLabel(c), amount: round(byCat[c]) }; })
-      .filter(function (c) { return c.amount > 0; }).sort(function (x, y) { return y.amount - x.amount; });
+      .filter(function (c) { return c.amount > 0; }).sort(function (x, y) { return y.amount - x.amount || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0); });
     var r = { period: p, total: round(total), prev: round(prev), count: count, cats: cats };
     if (kind === 'month' && window.SpenderrrLedger && typeof window.SpenderrrLedger.moneyIn === 'function') {
       try { r.moneyIn = window.SpenderrrLedger.moneyIn(a, b); } catch (e) { /* leave out */ }
@@ -365,7 +370,7 @@
       'Spenderrr shows them on Recent when they\'re due, and you can add them to your phone\'s calendar.'));
     var wrap = el('div', {});
     list.map(function (b) { return { b: b, st: status(b) }; })
-      .sort(function (x, y) { return x.st.due - y.st.due; })
+      .sort(byDue)
       .forEach(function (it) {
         var b = it.b, t = typeOf(b.type), row = el('button', { type: 'button', class: 'spx-row2', 'data-bill': b.id });
         var i = el('i', { style: 'background:' + catColor(b.cat) });
@@ -559,7 +564,7 @@
   function billsCard() {
     var list = bills(), pr = prefs();
     if (!pr.billsCard || !list.length) { remove('spx-bills'); return; }
-    var items = list.map(function (b) { return { b: b, st: status(b) }; }).sort(function (x, y) { return x.st.due - y.st.due; });
+    var items = list.map(function (b) { return { b: b, st: status(b) }; }).sort(byDue);
     var due = items.filter(function (it) { return it.st.show; });
     var card = el('section', { id: 'spx-bills', class: 'spx-card', 'aria-label': 'Bills' });
     var h = el('div', { class: 'spx-h' });
