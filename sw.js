@@ -1,6 +1,6 @@
 /*
  * Spenderrr – offline support (service worker)
- * Version 2026.11.2
+ * Version 2026.11.3
  *
  * Saved copy first: the app opens instantly from the copy saved on the device,
  * and the latest version is fetched from Netlify in the background for next time.
@@ -9,7 +9,7 @@
  * When offline, the saved copy is all it needs.
  * Google sign-in / Drive and other outside addresses are never touched.
  */
-var CACHE = 'spendlog-2026.11.2';
+var CACHE = 'spendlog-2026.11.3';
 var APP_FILES = [
   '/',
   '/index.html',

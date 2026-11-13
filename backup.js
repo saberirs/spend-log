@@ -236,6 +236,7 @@
         var c = { id: x.id, amount: Math.round(Number(x.amount) * 100) / 100, cat: x.cat, note: cleanText(x.note, 120), ts: Number(x.ts),
           createdAt: isFinite(Number(x.createdAt)) ? Number(x.createdAt) : Number(x.ts) };
         if (payLabel('in', x.pay)) c.pay = x.pay;
+        if (isFinite(Number(x.updatedAt)) && Number(x.updatedAt) > 0) c.updatedAt = Number(x.updatedAt);   // last edit time, for merging
         return c;
       }) });
     }
@@ -277,9 +278,33 @@
     if (it && typeof it === 'object' && it[f] !== undefined && it[f] !== null && it[f] !== '') return String(it[f]);
     return 'json:' + JSON.stringify(it);
   }
+  // The same item always gives the same text, whatever order its fields were written in
+  // (different app versions and devices build items in different orders).
+  function canon(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    return '{' + Object.keys(v).filter(function (k) { return v[k] !== undefined; }).sort()
+      .map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
+  }
   // Short fingerprint of one item (cyrb53), so the sync record stays small.
-  function fp(it) {
-    var str = JSON.stringify(it), h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  function fp(it) { return hash53(canon(it)); }
+  // Fingerprint as written by 2026.11.2 and earlier (field order counted). Only used to read
+  // sync records saved before this version, so the first sync after the update stays correct.
+  function legacyFp(it) { return hash53(JSON.stringify(it)); }
+  // Was this item the same at the last save (sync record fingerprint f)?
+  function sameAsBase(f, it) { return f !== undefined && (f === fp(it) || f === legacyFp(it)); }
+  // Edited on both devices since the last save: pick the same winner whichever device merges,
+  // so every device and the backup file end up identical. Newest edit (updatedAt) wins;
+  // without edit times, the fingerprint decides (arbitrary but always the same).
+  function conflictWinner(a, b) {
+    var ta = Number(a && a.updatedAt), tb = Number(b && b.updatedAt), oa = isFinite(ta) && ta > 0, ob = isFinite(tb) && tb > 0;
+    if (oa && ob && ta !== tb) return ta > tb ? a : b;
+    if (oa !== ob) return oa ? a : b;
+    var fa = fp(a), fb = fp(b);
+    return fa === fb ? a : (fa > fb ? a : b);
+  }
+  function hash53(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
     for (var i = 0; i < str.length; i++) {
       var ch = str.charCodeAt(i);
       h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
@@ -288,6 +313,7 @@
     h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
+  function idOrder(a, b) { var x = String(a && a.id), y = String(b && b.id); return x < y ? -1 : x > y ? 1 : 0; }
   function listOf(store, c) { return Array.isArray(store[c]) ? store[c] : []; }
   function collections(a, b) {
     var out = {};
@@ -308,10 +334,10 @@
   //   local  = this device, remote = the backup file, base = fingerprints of this device's items
   //   at the last save to that file (tells "deleted here" apart from "new on the other device").
   // Rules: same on both -> keep. Changed on one side only -> take that side.
-  // Changed on both -> this device wins. Deleted on a device -> recorded in "deleted" and
+  // Changed on both -> conflictWinner (the same answer on every device). Deleted on a device -> recorded in "deleted" and
   // dropped everywhere, unless it was edited on another device after. Anything missing
   // without a recorded deletion is kept (nothing is ever lost by accident).
-  function mergeStores(local, remote, base, deleted, now) {
+  function mergeStores(local, remote, base, deleted, now, preferLocal) {
     now = now || Date.now();
     base = base || {};
     var del = dict();
@@ -330,13 +356,15 @@
         var lf = fp(it);
         if (has(R, k)) {
           var rf = fp(R[k]);
-          if (rf === lf || B[k] !== lf) result.push(it);   // same, or changed here (this device wins)
-          else result.push(R[k]);                           // unchanged here, changed elsewhere
+          var hereChanged = !sameAsBase(B[k], it), thereChanged = !sameAsBase(B[k], R[k]);
+          if (rf === lf || !thereChanged) result.push(it);  // same, or changed here only
+          else if (!hereChanged) result.push(R[k]);         // unchanged here, changed elsewhere
+          else result.push(preferLocal ? it : conflictWinner(it, R[k]));   // changed on both
           nb[k] = lf;
           delete D[k];
         } else if (has(D, k)) {
           // Another device recorded deleting it. Keep it only if it was edited here since.
-          if (has(B, k) && B[k] !== lf) { result.push(it); nb[k] = lf; delete D[k]; }
+          if (has(B, k) && !sameAsBase(B[k], it)) { result.push(it); nb[k] = lf; delete D[k]; }
         } else {
           // New on this device — or missing from the file without a recorded deletion
           // (e.g. an older app version replaced the file): keep it, never lose it.
@@ -389,14 +417,15 @@
   }
 
   // Merge this device's data with a backup (null when there is no backup file yet).
-  function mergeData(local, remote, base) {
+  // preferLocal: on an edit-on-both conflict keep local (used to combine duplicate files, newest first).
+  function mergeData(local, remote, base, preferLocal) {
     local = sanitizeData(local);
     var rData = sanitizeData((remote && remote.data) || {});
     var data = {}, deleted = dict(), newBase = dict(), updates = 0;
     STORES.forEach(function (key) {
       if (!local[key] && !rData[key]) return;
       var lStore = parseStore(local[key]), rStore = parseStore(rData[key]);
-      var m = mergeStores(lStore, rStore, remote ? part(copyDict(base), key) : null, remote ? part(cleanDeleted(remote.deleted), key) : null);
+      var m = mergeStores(lStore, rStore, remote ? part(copyDict(base), key) : null, remote ? part(cleanDeleted(remote.deleted), key) : null, null, preferLocal);
       data[key] = JSON.stringify(m.store);
       join(deleted, key, m.deleted);
       join(newBase, key, m.base);
@@ -411,10 +440,15 @@
 
   // Several copies of the same backup (duplicates): combine them, newest first wins.
   function combineBackups(list) {
-    if (!list.length) return null;
+    if (!list || !list.length) return null;
+    // Newest backup time first. Equal times keep the order given, which callers make newest-file
+    // first (Drive: modified time; folder: file date), so every device combines the copies the same way.
+    list = list.map(function (b, i) { return { b: b, i: i, t: Date.parse(b && b.createdAt) || 0 }; })
+      .sort(function (x, y) { return (y.t - x.t) || (x.i - y.i); })
+      .map(function (x) { return x.b; });
     var acc = { data: Object.assign({}, list[0].data), deleted: cleanDeleted(list[0].deleted), createdAt: list[0].createdAt };
     for (var i = 1; i < list.length; i++) {
-      var m = mergeData(acc.data, list[i], {});
+      var m = mergeData(acc.data, list[i], {}, true);   // the newer copy wins
       Object.keys(list[i].deleted || {}).forEach(function (c) {
         m.deleted[c] = Object.assign(dict(), cleanDeleted(list[i].deleted)[c], m.deleted[c] || {});
       });
@@ -510,7 +544,7 @@
       .sort(function (a, b) { return categoryLabel(a).localeCompare(categoryLabel(b)); });
     return order.concat(extra).filter(function (id) { return groups[id]; }).map(function (id) {
       var list = groups[id].slice().sort(function (a, b) {
-        return (Number(a.ts) || 0) - (Number(b.ts) || 0) || (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0);
+        return (Number(a.ts) || 0) - (Number(b.ts) || 0) || (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0) || idOrder(a, b);
       });
       var total = 0;
       var rows = list.map(function (x) {
@@ -544,7 +578,7 @@
   function byCredit(data) {
     var list = creditList(data);
     return creditOrder(data).map(function (id) {
-      var rows = list.filter(function (x) { return x.cat === id; }).sort(function (a, b) { return a.ts - b.ts || (a.createdAt || 0) - (b.createdAt || 0); });
+      var rows = list.filter(function (x) { return x.cat === id; }).sort(function (a, b) { return a.ts - b.ts || (a.createdAt || 0) - (b.createdAt || 0) || idOrder(a, b); });
       var total = 0;
       return {
         category: categoryLabel(id), count: rows.length,
@@ -723,7 +757,7 @@
     ids.forEach(function (id) {
       var st = catStyle[id];
       var list = entries.filter(function (x) { return (x && x.cat ? String(x.cat) : 'other') === id; }).sort(function (a, b) {
-        return (Number(a.ts) || 0) - (Number(b.ts) || 0) || (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0);
+        return (Number(a.ts) || 0) - (Number(b.ts) || 0) || (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0) || idOrder(a, b);
       });
       var total = 0;
       list.forEach(function (x) { total += Number(x.amount) || 0; });
@@ -771,7 +805,7 @@
     var merges3 = ['A1:F1', 'A2:F2'], grandIn = 0;
     creditIds.forEach(function (id) {
       var st = catStyle[id];
-      var list = credits.filter(function (x) { return x.cat === id; }).sort(function (a, b) { return a.ts - b.ts || (a.createdAt || 0) - (b.createdAt || 0); });
+      var list = credits.filter(function (x) { return x.cat === id; }).sort(function (a, b) { return a.ts - b.ts || (a.createdAt || 0) - (b.createdAt || 0) || idOrder(a, b); });
       var total = list.reduce(function (tt, x) { return tt + Number(x.amount); }, 0);
       grandIn += total;
       rows3.push({ height: 22, cells: [['', st.band], [categoryLabel(id) + '  ·  ' + list.length + (list.length === 1 ? ' entry' : ' entries'), st.band],
@@ -1062,7 +1096,7 @@
       var inPeriod = function (x) { var ts = Number(x && x.ts); return ts >= p.start && ts < p.end; };
       var outs = everything.outs.filter(inPeriod), ins = everything.ins.filter(inPeriod);
       var all = outs.map(function (x) { return { side: 'out', x: x }; }).concat(ins.map(function (x) { return { side: 'in', x: x }; }))
-        .sort(function (a, b) { return (Number(a.x.ts) - Number(b.x.ts)) || ((Number(a.x.createdAt) || 0) - (Number(b.x.createdAt) || 0)); });
+        .sort(function (a, b) { return (Number(a.x.ts) - Number(b.x.ts)) || ((Number(a.x.createdAt) || 0) - (Number(b.x.createdAt) || 0)) || idOrder(a.x, b.x); });
       var times = all.map(function (r) { return Number(r.x.ts); });
       var from = isFinite(p.start) ? p.start : (times.length ? Math.min.apply(null, times) : now.getTime());
       var to = isFinite(p.end) ? p.end - 1 : (times.length ? Math.max.apply(null, times) : now.getTime());
@@ -1652,12 +1686,15 @@
     for await (var pair of root.entries()) {
       var name = pair[0], h = pair[1], d = monthDate(name);
       if (h.kind !== 'directory' || !d) continue;
-      var file = await childOf(h, FILE_NAME, 'file'), b = null;
-      try { b = file && parseBackup(await (await file.getFile()).text()); } catch (e) { b = null; }
-      if (b) (byMonth[monthFolder(d)] = byMonth[monthFolder(d)] || []).push(b);
+      var file = await childOf(h, FILE_NAME, 'file'), b = null, fd = 0;
+      try { var fo = file && await file.getFile(); fd = (fo && fo.lastModified) || 0; b = fo && parseBackup(await fo.text()); } catch (e) { b = null; }
+      if (b) (byMonth[monthFolder(d)] = byMonth[monthFolder(d)] || []).push({ b: b, t: fd, name: name });
     }
     Object.keys(byMonth).forEach(function (m) {
-      var c = byMonth[m].length === 1 ? byMonth[m][0] : combineBackups(byMonth[m]);
+      // Newest file first (then by folder name), not the order the folder happens to list them in.
+      var list = byMonth[m].sort(function (x, y) { return (y.t - x.t) || (x.name < y.name ? -1 : x.name > y.name ? 1 : 0); })
+        .map(function (x) { return x.b; });
+      var c = list.length === 1 ? list[0] : combineBackups(list);
       if (c) out.push({ month: m, backup: { data: c.data, deleted: c.deleted, createdAt: c.createdAt }, source: 'This device (' + parent.name + ')' });
     });
     return sortBackups(out);
@@ -2152,11 +2189,37 @@
     scheduleChangeBackup();
     refreshStatus();
   }
+  // Give each entry the app edits an edit time (updatedAt), so when two devices edit the same entry
+  // the newest edit wins on both (see conflictWinner). The app keeps its own copy without
+  // updatedAt, so an unchanged entry keeps the time it already had. Not used for restores or for
+  // loading changes from other devices (applying), whose entries keep the times they came with.
+  function stampEdits(before, after) {
+    var oldStore = parseStore(before), newStore = JSON.parse(after), now = Date.now(), changed = false;
+    if (!newStore || typeof newStore !== 'object' || Array.isArray(newStore)) return after;
+    var plain = function (it) { var c = {}; Object.keys(it).forEach(function (f) { if (f !== 'updatedAt') c[f] = it[f]; }); return canon(c); };
+    Object.keys(newStore).forEach(function (c) {
+      if (!Array.isArray(newStore[c])) return;
+      var old = dict();
+      listOf(oldStore, c).forEach(function (it) { if (it && typeof it === 'object') old[itemKey(c, it)] = it; });
+      newStore[c].forEach(function (it) {
+        if (!it || typeof it !== 'object' || Array.isArray(it)) return;
+        var o = old[itemKey(c, it)];
+        if (!o) return;                                    // new entry: no other device can have edited it
+        if (plain(it) !== plain(o)) { if (it.updatedAt !== now) { it.updatedAt = now; changed = true; } }
+        else if (o.updatedAt !== undefined && it.updatedAt !== o.updatedAt) { it.updatedAt = o.updatedAt; changed = true; }
+      });
+    });
+    return changed ? JSON.stringify(newStore) : after;
+  }
+
   // The app saves to localStorage once per add / edit / delete; notice those saves.
   function watchChanges() {
     var proto = Storage.prototype, set = proto.setItem, remove = proto.removeItem;
     function mine(store, k) { return !applying && store === window.localStorage && ALLOWED_KEYS.indexOf(k) >= 0; }
     proto.setItem = function (k, v) {
+      if (mine(this, k) && (k === DATA_KEY || k === CREDITS_KEY)) {
+        try { arguments[1] = stampEdits(proto.getItem.call(this, k), v); } catch (e) { /* save unchanged */ }
+      }
       var r = set.apply(this, arguments);
       try { if (mine(this, k)) dataChanged(); } catch (e) { /* ignore */ }
       return r;
@@ -2631,7 +2694,7 @@
   window.SpendLogBackup = {
     version: VERSION, backupNow: function () { return runBackup('tap'); }, runAuto: function () { return runBackup('auto'); },
     runChange: function () { return runBackup('change'); }, mergeData: mergeData, mergeStores: mergeStores,
-    fingerprints: fingerprints, parseBackup: parseBackup, cleanAppBackup: cleanAppBackup, reportBlob: reportBlob,
+    fingerprints: fingerprints, combineBackups: combineBackups, parseBackup: parseBackup, cleanAppBackup: cleanAppBackup, reportBlob: reportBlob,
     reportPeriod: reportPeriod, periodLabel: periodLabel, reportData: reportData,
     backupText: backupText, excelBlob: excelBlob,
     restore: restore, isDue: isDue, check: check, records: localRecords, compareCounts: compareCounts, monthFolder: monthFolder

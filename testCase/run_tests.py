@@ -1427,7 +1427,9 @@ def merge_rules(b, srv):
     assert ids(run([a], [bb], None)) == ['a', 'b'], 'first save: everything from both sides'
     assert run([a2], [a], [a])['store']['e'] == [a2], 'edited here -> this device wins'
     assert run([a], [a2], [a])['store']['e'] == [a2], 'edited elsewhere -> take the other device'
-    assert run([a2], [entry('a', 3)], [a])['store']['e'] == [a2], 'edited on both -> the device saving now wins'
+    a3 = entry('a', 3)
+    both = run([a2], [a3], [a])['store']['e']
+    assert len(both) == 1 and both == run([a3], [a2], [a])['store']['e'], 'edited on both -> the same winner whichever device merges'
     res = run([], [a, bb], [a, bb])
     assert res['store']['e'] == [] and set(res['deleted']['e']) == {'a', 'b'}, 'deleted here -> recorded'
     assert run([a], [], [a], {'e': {'a': 1}})['store']['e'] == [], 'deleted elsewhere, unchanged here -> gone'
@@ -1438,6 +1440,68 @@ def merge_rules(b, srv):
     assert 'a' in old['e'] and run([], [], None, old, 10 ** 13 + 181 * 86400000)['deleted'] == {}, 'old deletions are forgotten'
     people = d.ev("""SpendLogBackup.mergeStores({ p: [{ name: 'Ravi', addedAt: 1 }] }, { p: [{ name: 'Ravi', addedAt: 2 }, { name: 'Priya', addedAt: 3 }] }, null, null)""")
     assert [p['name'] for p in people['store']['p']] == ['Ravi', 'Priya'], 'people are matched by name'
+    d.close()
+
+
+@test
+def merge_gives_the_same_answer_on_every_device(b, srv):
+    d = Device(b, srv).open()
+    run = lambda local, remote, base, deleted=None: d.ev(
+        """([l, r, b, del]) => SpendLogBackup.mergeStores({ e: l }, { e: r }, b, del, 10 ** 13)""",
+        [local, remote, base, deleted])
+    fps = lambda items: d.ev("(x) => SpendLogBackup.fingerprints({ e: x })", items)
+    by_id = lambda res: {x['id']: x for x in res['store']['e']}
+    a, a2, a3, bb = entry('a', 1), entry('a', 2), entry('a', 3), entry('b', 5)
+    # Same item written with its fields in a different order is the same item.
+    shuffled = dict(reversed(list(a.items())))
+    assert fps([a]) == fps([shuffled]), 'field order must not change the fingerprint'
+    assert run([shuffled], [a2], fps([a]))['store']['e'] == [a2], 'reordered fields are not an edit here'
+    # Edited on both: whichever phone merges, the same entry wins.
+    for base in (fps([a]), None, {}):
+        x, y = by_id(run([a2, bb], [a3], base)), by_id(run([a3], [a2, bb], base))
+        assert x == y, 'merge must not depend on which device runs it: %r vs %r' % (x, y)
+    # With edit times, the newest edit wins on both phones.
+    old_edit, new_edit = dict(a2, updatedAt=100), dict(a3, updatedAt=200)
+    assert run([old_edit], [new_edit], fps([a]))['store']['e'] == [new_edit], 'newest edit wins (other device newer)'
+    assert run([new_edit], [old_edit], fps([a]))['store']['e'] == [new_edit], 'newest edit wins (this device newer)'
+    # Sync records saved by 2026.11.2 (field-order fingerprints) still work after the update.
+    legacy = d.ev("""(x) => { var str = JSON.stringify(x), h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+        for (var i = 0; i < str.length; i++) { var ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+        h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+        h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+        return { e: { [x.id]: (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36) } }; }""", a)
+    assert run([a], [a2], legacy)['store']['e'] == [a2], 'old sync record: unchanged here -> take the other device'
+    assert run([a2], [a], legacy)['store']['e'] == [a2], 'old sync record: edited here -> keep it'
+    assert run([a], [], legacy, {'e': {'a': 1}})['store']['e'] == [], 'old sync record: deletion elsewhere still applies'
+    # Duplicate backup files combine the same way whatever order they are listed in.
+    def backup(items, when):
+        return {'data': {'spendlog.v1': json.dumps({'e': items})}, 'deleted': {}, 'createdAt': when}
+    copies = [backup([a2], '2026-10-26T10:00:00.000Z'), backup([a3, bb], '2026-10-26T12:00:00.000Z'), backup([a], '2026-10-26T11:00:00.000Z')]
+    one = d.ev("(l) => SpendLogBackup.combineBackups(l)", copies)
+    two = d.ev("(l) => SpendLogBackup.combineBackups(l)", list(reversed(copies)))
+    assert json.loads(one['data']['spendlog.v1']) == json.loads(two['data']['spendlog.v1']), 'combine must not depend on listing order'
+    assert one['createdAt'] == two['createdAt'] == '2026-10-26T12:00:00.000Z'
+    assert {e['id']: e['amount'] for e in json.loads(one['data']['spendlog.v1'])['e']} == {'a': 3, 'b': 5}, 'newest copy wins'
+    # Each edit the app saves gets an edit time; unchanged entries keep theirs.
+    st = d.ev("""(x) => {
+        const save = (o) => localStorage.setItem('spendlog.v1', JSON.stringify(o));
+        const read = () => JSON.parse(localStorage.getItem('spendlog.v1')).e;
+        save({ e: [x.a, x.b], m: [], p: [], s: [] });
+        const fresh = read();
+        save({ e: [Object.assign({}, x.a, { amount: 99 }), x.b], m: [], p: [], s: [] });
+        const edited = read();
+        save({ e: [Object.assign({}, x.a, { amount: 99 }), x.b], m: [], p: [], s: [] });   // the app's copy has no updatedAt
+        return { fresh: fresh, edited: edited, again: read(), now: Date.now() };
+    }""", {'a': a, 'b': bb})
+    assert all('updatedAt' not in x for x in st['fresh']), 'new entries need no edit time'
+    assert st['edited'][0]['updatedAt'] > 0 and 'updatedAt' not in st['edited'][1], 'only the edited entry gets an edit time'
+    assert st['again'][0]['updatedAt'] == st['edited'][0]['updatedAt'], 'saving again without a change keeps the edit time'
+    # Totals are exact: 0.1 + 0.2 is 0.3, in any order.
+    t = d.ev("""() => { localStorage.setItem('spenderrr.credits', JSON.stringify({ e: [
+        { id: 'x1', amount: 0.1, cat: 'salary', note: '', ts: 1000, createdAt: 1000 },
+        { id: 'x2', amount: 0.2, cat: 'salary', note: '', ts: 1001, createdAt: 1001 } ] }));
+        return SpenderrrLedger.moneyIn(0, 2000); }""")
+    assert t == 0.3, t
     d.close()
 
 
@@ -1473,7 +1537,8 @@ def edits_and_deletions_reach_the_other_phone(b, srv):
     assert '2 changes not on this device' in bp.banner(), bp.banner()
     load_offer(bp)
     assert amounts(bp) == {'a2': 20, 'a3': 30, 'b1': 7}, 'Deletion and edit should reach phone B'
-    change(a, ('edit', 'a2', 50))                          # both edit the same entry: last save wins
+    change(a, ('edit', 'a2', 50))                          # both edit the same entry: the newest edit wins
+    bp.page.clock.pause_at(datetime(2026, 10, 26, 19, 31))  # phone B edits a minute later
     change(bp, ('edit', 'a2', 70))
     a.backup_now(); bp.backup_now()
     assert drive_amounts(drive)['a2'] == 70
